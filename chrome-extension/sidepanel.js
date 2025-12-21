@@ -109,6 +109,12 @@ async function handleAnalyze() {
     return;
   }
 
+  // Check if Supabase URL is configured
+  if (!CONFIG.SUPABASE_FUNCTION_URL || CONFIG.SUPABASE_FUNCTION_URL === 'YOUR_SUPABASE_FUNCTION_URL_HERE') {
+    showError('Please configure your Supabase Edge Function URL in config.js');
+    return;
+  }
+
   // Show loading state
   showLoading();
   hideError();
@@ -117,58 +123,107 @@ async function handleAnalyze() {
   console.log('Analyzing video:', currentVideoInfo);
   console.log('Level:', selectedLevel);
 
-  // TODO: In Session 2, we'll integrate with Supabase Edge Functions + Gemini API
-  // For now, show a placeholder response
-  setTimeout(() => {
+  try {
+    // Call Supabase Edge Function
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
+
+    const response = await fetch(CONFIG.SUPABASE_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        videoId: currentVideoInfo.videoId,
+        videoTitle: currentVideoInfo.title,
+        channelName: currentVideoInfo.channel,
+        level: selectedLevel,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Server error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success && data.commentary) {
+      hideLoading();
+      showCommentary(formatCommentary(data.commentary, data));
+    } else {
+      throw new Error('Invalid response from server');
+    }
+
+  } catch (error) {
     hideLoading();
-    showCommentary(generatePlaceholderCommentary());
-  }, 2000);
+    console.error('Error analyzing video:', error);
+
+    if (error.name === 'AbortError') {
+      showError('Request timed out. The analysis is taking longer than expected. Please try again.');
+    } else if (error.message.includes('Failed to fetch')) {
+      showError('Unable to connect to the server. Please check your Supabase configuration and internet connection.');
+    } else {
+      showError(`Error: ${error.message}`);
+    }
+  }
 }
 
-// Generate placeholder commentary for testing
-function generatePlaceholderCommentary() {
-  const levelDescriptions = {
-    novice: 'beginner-friendly explanations',
-    intermediate: 'moderate technical depth',
-    advanced: 'advanced music theory and production techniques'
-  };
+// Format commentary from API response
+function formatCommentary(commentary, data) {
+  // Convert markdown to HTML
+  const html = markdownToHtml(commentary);
 
   return `
-    <div style="margin-bottom: 16px;">
-      <strong style="color: var(--primary-color);">🎵 Music Commentary Ready!</strong>
+    <div class="commentary-header" style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid var(--border-color);">
+      <div style="margin-bottom: 8px;">
+        <strong style="color: var(--primary-color);">🎵 AI-Generated Music Commentary</strong>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary);">
+        <div>Level: <strong>${capitalizeFirst(data.level)}</strong></div>
+        <div>Generated: ${new Date(data.generatedAt).toLocaleString()}</div>
+      </div>
     </div>
 
-    <div style="margin-bottom: 12px;">
-      <strong>Video:</strong> ${currentVideoInfo.title}
-    </div>
-
-    <div style="margin-bottom: 12px;">
-      <strong>Channel:</strong> ${currentVideoInfo.channel}
-    </div>
-
-    <div style="margin-bottom: 12px;">
-      <strong>Level:</strong> ${capitalizeFirst(selectedLevel)} (${levelDescriptions[selectedLevel]})
-    </div>
-
-    <div style="margin-top: 20px; padding: 16px; background: white; border-radius: 8px; border-left: 4px solid var(--primary-color);">
-      <p style="margin-bottom: 12px;"><strong>📝 Placeholder Commentary</strong></p>
-      <p style="color: var(--text-secondary); font-size: 13px;">
-        This is a placeholder for the AI-generated commentary. In Session 2, we'll integrate:
-      </p>
-      <ul style="margin-top: 8px; margin-left: 20px; color: var(--text-secondary); font-size: 13px;">
-        <li>Supabase Edge Functions</li>
-        <li>Gemini API for video analysis</li>
-        <li>Timestamped commentary sections</li>
-        <li>Musical insights based on your selected level</li>
-      </ul>
-    </div>
-
-    <div style="margin-top: 16px; padding: 12px; background: #f0fdf4; border-radius: 8px;">
-      <p style="color: #16a34a; font-size: 13px;">
-        ✅ Extension skeleton is working! Ready for backend integration.
-      </p>
+    <div class="commentary-body">
+      ${html}
     </div>
   `;
+}
+
+// Simple markdown to HTML converter
+function markdownToHtml(markdown) {
+  let html = markdown;
+
+  // Convert headers (## Header -> <h2>Header</h2>)
+  html = html.replace(/^## (.*$)/gim, '<h2 style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-top: 20px; margin-bottom: 12px;">$1</h2>');
+  html = html.replace(/^### (.*$)/gim, '<h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-top: 16px; margin-bottom: 10px;">$1</h3>');
+
+  // Convert bold (**text** -> <strong>text</strong>)
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 600; color: var(--text-primary);">$1</strong>');
+
+  // Convert italic (*text* -> <em>text</em>)
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // Convert bullet points (- item or * item -> <li>item</li>)
+  html = html.replace(/^[\-\*] (.*$)/gim, '<li style="margin-left: 20px; margin-bottom: 8px; line-height: 1.6;">$1</li>');
+
+  // Wrap consecutive <li> elements in <ul>
+  html = html.replace(/(<li[^>]*>.*<\/li>\s*)+/gim, '<ul style="margin: 12px 0; padding-left: 0; list-style-position: inside;">$&</ul>');
+
+  // Convert line breaks to paragraphs
+  const paragraphs = html.split('\n\n').filter(p => p.trim());
+  html = paragraphs.map(p => {
+    if (p.startsWith('<h2') || p.startsWith('<h3') || p.startsWith('<ul') || p.startsWith('<li')) {
+      return p;
+    }
+    return `<p style="margin-bottom: 12px; line-height: 1.6; color: var(--text-primary);">${p.trim()}</p>`;
+  }).join('');
+
+  return html;
 }
 
 // UI state management functions

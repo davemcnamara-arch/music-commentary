@@ -54,19 +54,24 @@ music-commentary/
 
 ## ✨ Features
 
-### Current (Session 1)
+### Completed (Sessions 1 & 2)
 - ✅ Chrome extension with side panel UI
 - ✅ YouTube video detection and data extraction
 - ✅ Three education levels (Novice/Intermediate/Advanced)
 - ✅ Modern, responsive UI design
 - ✅ Loading states and error handling
+- ✅ Supabase Edge Functions backend
+- ✅ AI-powered video analysis via Gemini API
+- ✅ Educational music commentary generation
+- ✅ Markdown formatting with HTML rendering
+- ✅ Level-appropriate analysis (beginner to advanced)
 
-### Planned (Session 2+)
-- 🔄 AI-powered video analysis via Gemini API
-- 🔄 Timestamped educational commentary
-- 🔄 Music theory explanations
-- 🔄 Production technique insights
+### Future Enhancements (Session 3+)
+- 🔄 Timestamp extraction from commentary
 - 🔄 Interactive timeline integration
+- 🔄 Commentary caching for popular videos
+- 🔄 Export/copy functionality
+- 🔄 Analysis history
 
 ## 📋 Development Sessions
 
@@ -78,12 +83,16 @@ Build the Chrome extension structure with:
 - Video title/channel extraction
 - Placeholder commentary display
 
-### Session 2: Backend Integration (Next)
-- Set up Supabase project
-- Create Edge Functions
-- Integrate Gemini API
-- Connect frontend to backend
-- Implement real commentary generation
+### Session 2: Backend Integration ✅
+Build the AI-powered backend with:
+- Supabase Edge Functions setup
+- Gemini API integration for video analysis
+- TypeScript Edge Function implementation
+- Chrome extension API integration
+- Markdown formatting and rendering
+- Error handling and timeout management
+
+**📖 Setup Guide**: See [SESSION2_SETUP.md](SESSION2_SETUP.md) for complete deployment instructions
 
 ### Session 3: Enhanced Features (Future)
 - Timestamp extraction

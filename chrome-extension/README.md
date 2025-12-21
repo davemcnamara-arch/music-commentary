@@ -57,32 +57,42 @@ Create or download icon files in the following sizes and place them in the `icon
 3. You should see a placeholder commentary message
 4. This confirms the extension skeleton is working!
 
-## 🎯 Features (Session 1)
+## 🎯 Features
 
-- ✅ Side panel UI that opens on YouTube videos
-- ✅ Extracts video title and channel from YouTube page
-- ✅ Three education levels: Novice, Intermediate, Advanced
-- ✅ Modern, clean UI design
-- ✅ Loading states and error handling
-- ✅ Placeholder commentary display
+### ✅ Completed (Sessions 1 & 2)
 
-## 🔄 Next Steps (Session 2)
+- Side panel UI that opens on YouTube videos
+- Extracts video title and channel from YouTube page
+- Three education levels: Novice, Intermediate, Advanced
+- Modern, clean UI design
+- Loading states and error handling
+- **Supabase Edge Functions integration**
+- **AI-powered commentary via Gemini API**
+- **Real-time video analysis**
+- **Formatted markdown commentary display**
 
-The current version is a working skeleton. In Session 2, we'll add:
+### 🔄 Future Enhancements (Session 3+)
 
-1. **Supabase Integration**
-   - Set up Edge Functions
-   - Connect to Supabase backend
+- Timestamped commentary sections
+- Interactive timeline integration
+- Commentary caching
+- Export/copy functionality
+- Analysis history
 
-2. **Gemini API Integration**
-   - Video analysis using Google's Gemini API
-   - Generate educational commentary based on selected level
+## 🚀 Backend Integration (Session 2)
 
-3. **Enhanced Features**
-   - Timestamped commentary sections
-   - Music theory insights
-   - Production technique explanations
-   - Interactive timeline integration
+The extension now calls a Supabase Edge Function that uses Google's Gemini API to analyze videos!
+
+**To enable AI-powered commentary:**
+
+1. Follow the setup guide in [SESSION2_SETUP.md](../SESSION2_SETUP.md)
+2. Deploy the Supabase Edge Function
+3. Update `config.js` with your Supabase URL
+4. Reload the extension
+
+**Or continue using without backend:**
+
+The extension will show a helpful error message if the backend isn't configured yet.
 
 ## 🐛 Troubleshooting
 
