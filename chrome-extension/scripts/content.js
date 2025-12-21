@@ -1,7 +1,10 @@
 // Content script for YouTube pages
+console.log('Music Commentary: Content script loaded');
 
 // Function to extract video information from YouTube page
 function getVideoInfo() {
+  console.log('Music Commentary: Getting video info...');
+
   const videoTitle = document.querySelector('h1.ytd-watch-metadata yt-formatted-string')?.textContent?.trim() ||
                      document.querySelector('h1.title')?.textContent?.trim() ||
                      'Video title not found';
@@ -11,6 +14,8 @@ function getVideoInfo() {
                       'Channel not found';
 
   const videoId = new URLSearchParams(window.location.search).get('v') || '';
+
+  console.log('Music Commentary: Video info extracted:', { videoTitle, channelName, videoId });
 
   return {
     title: videoTitle,
@@ -22,8 +27,10 @@ function getVideoInfo() {
 
 // Listen for messages from side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('Music Commentary: Received message:', message);
   if (message.type === 'GET_VIDEO_INFO') {
     const videoInfo = getVideoInfo();
+    console.log('Music Commentary: Sending response:', videoInfo);
     sendResponse({ success: true, data: videoInfo });
   }
   return true;

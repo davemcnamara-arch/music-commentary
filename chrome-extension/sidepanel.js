@@ -32,29 +32,36 @@ async function loadVideoInfo() {
   try {
     // Get the current active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    console.log('Side panel: Current tab:', tab);
 
     if (!tab || !tab.url || !tab.url.includes('youtube.com/watch')) {
+      console.log('Side panel: Not on YouTube watch page');
       showError('Please navigate to a YouTube video page');
       return;
     }
 
+    console.log('Side panel: Sending message to content script on tab', tab.id);
+
     // Send message to content script to get video info
     chrome.tabs.sendMessage(tab.id, { type: 'GET_VIDEO_INFO' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error('Error getting video info:', chrome.runtime.lastError);
+        console.error('Side panel: Error getting video info:', chrome.runtime.lastError);
         showError('Unable to load video information. Please refresh the page.');
         return;
       }
+
+      console.log('Side panel: Received response:', response);
 
       if (response && response.success) {
         currentVideoInfo = response.data;
         updateVideoDisplay();
       } else {
+        console.log('Side panel: Response was not successful');
         showError('Failed to load video information');
       }
     });
   } catch (error) {
-    console.error('Error loading video info:', error);
+    console.error('Side panel: Error loading video info:', error);
     showError('An error occurred while loading video information');
   }
 }
