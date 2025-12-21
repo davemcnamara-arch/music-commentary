@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Commentary</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="title">🎵 Music Commentary</h1>
+      <p class="subtitle">Educational insights for music videos</p>
+    </header>
+
+    <!-- Video Info Section -->
+    <section class="video-info">
+      <h2 class="section-title">Current Video</h2>
+      <div class="video-details">
+        <div class="detail-item">
+          <span class="label">Title:</span>
+          <span class="value" id="video-title">Loading...</span>
+        </div>
+        <div class="detail-item">
+          <span class="label">Channel:</span>
+          <span class="value" id="video-channel">Loading...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Level Selection -->
+    <section class="level-selection">
+      <h2 class="section-title">Select Your Level</h2>
+      <div class="level-buttons">
+        <button class="level-btn" data-level="novice">
+          <span class="level-icon">🌱</span>
+          <span class="level-text">Novice</span>
+        </button>
+        <button class="level-btn" data-level="intermediate">
+          <span class="level-icon">🎓</span>
+          <span class="level-text">Intermediate</span>
+        </button>
+        <button class="level-btn" data-level="advanced">
+          <span class="level-icon">🎯</span>
+          <span class="level-text">Advanced</span>
+        </button>
+      </div>
+      <div class="selected-level" id="selected-level">
+        No level selected
+      </div>
+    </section>
+
+    <!-- Analyze Button -->
+    <section class="analyze-section">
+      <button class="analyze-btn" id="analyze-btn" disabled>
+        <span class="btn-text">Analyze Video</span>
+      </button>
+    </section>
+
+    <!-- Loading State -->
+    <section class="loading-section" id="loading-section" style="display: none;">
+      <div class="loader"></div>
+      <p class="loading-text">Analyzing video...</p>
+    </section>
+
+    <!-- Commentary Display -->
+    <section class="commentary-section" id="commentary-section" style="display: none;">
+      <h2 class="section-title">Commentary</h2>
+      <div class="commentary-content" id="commentary-content">
+        <!-- Commentary will be inserted here -->
+      </div>
+    </section>
+
+    <!-- Error Display -->
+    <section class="error-section" id="error-section" style="display: none;">
+      <div class="error-content">
+        <span class="error-icon">⚠️</span>
+        <p class="error-message" id="error-message"></p>
+      </div>
+    </section>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
