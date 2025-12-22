@@ -137,7 +137,31 @@
 
     <!-- Commentary Display -->
     <section class="commentary-section" id="commentary-section" style="display: none;">
-      <h2 class="section-title">Commentary</h2>
+      <div class="commentary-header-controls">
+        <h2 class="section-title">Commentary</h2>
+        <div class="commentary-actions">
+          <button class="action-btn popout-btn" id="popout-btn" title="Open in pop-out window">
+            ↗️ Pop Out
+          </button>
+          <button class="action-btn read-aloud-btn" id="read-aloud-btn" title="Read commentary aloud">
+            🔊 Read Aloud
+          </button>
+        </div>
+      </div>
+
+      <!-- Text-to-Speech Controls (hidden by default) -->
+      <div class="tts-controls" id="tts-controls" style="display: none;">
+        <div class="tts-status">
+          <span class="tts-icon">🔊</span>
+          <span class="tts-text" id="tts-status-text">Reading...</span>
+        </div>
+        <div class="tts-buttons">
+          <button class="tts-btn" id="tts-pause-btn">⏸️ Pause</button>
+          <button class="tts-btn" id="tts-resume-btn" style="display: none;">▶️ Resume</button>
+          <button class="tts-btn tts-stop-btn" id="tts-stop-btn">⏹️ Stop</button>
+        </div>
+      </div>
+
       <div class="commentary-content" id="commentary-content">
         <!-- Commentary will be inserted here -->
       </div>

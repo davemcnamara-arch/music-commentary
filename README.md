@@ -85,6 +85,8 @@ music-commentary/
 - ✅ **Database caching for analyzed videos**
 - ✅ **Synchronized video highlighting**
 - ✅ Interactive timestamp navigation
+- ✅ **Text-to-Speech (Read Aloud) with pause/resume/stop controls**
+- ✅ **Pop-out window for flexible commentary viewing**
 - ✅ Markdown formatting with HTML rendering
 - ✅ Level-appropriate analysis (beginner to advanced)
 

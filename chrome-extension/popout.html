@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Commentary - Pop-out</title>
+  <link rel="stylesheet" href="popout.css">
+</head>
+<body>
+  <div class="popout-container">
+    <!-- Header -->
+    <header class="popout-header">
+      <div class="video-info-compact">
+        <h1 class="popout-title" id="popout-video-title">Music Commentary</h1>
+        <p class="popout-subtitle" id="popout-video-channel"></p>
+        <p class="popout-level" id="popout-level"></p>
+      </div>
+
+      <div class="popout-controls">
+        <button class="control-btn read-aloud-btn" id="popout-read-aloud-btn" title="Read commentary aloud">
+          🔊 Read Aloud
+        </button>
+      </div>
+    </header>
+
+    <!-- Text-to-Speech Controls (hidden by default) -->
+    <div class="tts-controls" id="popout-tts-controls" style="display: none;">
+      <div class="tts-status">
+        <span class="tts-icon">🔊</span>
+        <span class="tts-text" id="popout-tts-status-text">Reading...</span>
+      </div>
+      <div class="tts-buttons">
+        <button class="tts-btn" id="popout-tts-pause-btn">⏸️ Pause</button>
+        <button class="tts-btn" id="popout-tts-resume-btn" style="display: none;">▶️ Resume</button>
+        <button class="tts-btn tts-stop-btn" id="popout-tts-stop-btn">⏹️ Stop</button>
+      </div>
+    </div>
+
+    <!-- Commentary Content -->
+    <div class="popout-commentary" id="popout-commentary">
+      <!-- Commentary will be inserted here -->
+    </div>
+
+    <!-- Footer -->
+    <footer class="popout-footer">
+      <p class="footer-text">Music Commentary Extension</p>
+    </footer>
+  </div>
+
+  <script src="popout.js"></script>
+</body>
+</html>

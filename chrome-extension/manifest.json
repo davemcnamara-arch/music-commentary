@@ -38,5 +38,11 @@
       "js": ["scripts/content.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["popout.html", "popout.css", "popout.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

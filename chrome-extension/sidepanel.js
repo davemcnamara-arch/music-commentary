@@ -8,6 +8,12 @@ let currentSectionIndex = -1;
 let videoTimeInterval = null;
 let isPaused = false;
 
+// Text-to-Speech state
+let ttsUtterance = null;
+let ttsVoice = null;
+let currentCommentaryText = '';
+let isSpeaking = false;
+
 // DOM elements
 const videoTitleElement = document.getElementById('video-title');
 const videoChannelElement = document.getElementById('video-channel');
@@ -30,6 +36,15 @@ const manualResumeBtn = document.getElementById('manual-resume-btn');
 const stageDownload = document.getElementById('stage-download');
 const stageAnalysis = document.getElementById('stage-analysis');
 const stageCommentary = document.getElementById('stage-commentary');
+
+// TTS and Pop-out elements
+const readAloudBtn = document.getElementById('read-aloud-btn');
+const popoutBtn = document.getElementById('popout-btn');
+const ttsControls = document.getElementById('tts-controls');
+const ttsStatusText = document.getElementById('tts-status-text');
+const ttsPauseBtn = document.getElementById('tts-pause-btn');
+const ttsResumeBtn = document.getElementById('tts-resume-btn');
+const ttsStopBtn = document.getElementById('tts-stop-btn');
 
 // Initialize the side panel
 async function initialize() {
@@ -115,6 +130,43 @@ function setupEventListeners() {
 
   // Analyze button listener
   analyzeBtn.addEventListener('click', handleAnalyze);
+
+  // Read Aloud button listener
+  if (readAloudBtn) {
+    readAloudBtn.addEventListener('click', handleReadAloud);
+  }
+
+  // Pop-out button listener
+  if (popoutBtn) {
+    popoutBtn.addEventListener('click', handlePopout);
+  }
+
+  // TTS control listeners
+  if (ttsPauseBtn) {
+    ttsPauseBtn.addEventListener('click', () => {
+      if (window.speechSynthesis && isSpeaking) {
+        window.speechSynthesis.pause();
+        ttsPauseBtn.style.display = 'none';
+        ttsResumeBtn.style.display = 'inline-block';
+        ttsStatusText.textContent = 'Paused';
+      }
+    });
+  }
+
+  if (ttsResumeBtn) {
+    ttsResumeBtn.addEventListener('click', () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.resume();
+        ttsResumeBtn.style.display = 'none';
+        ttsPauseBtn.style.display = 'inline-block';
+        ttsStatusText.textContent = 'Reading...';
+      }
+    });
+  }
+
+  if (ttsStopBtn) {
+    ttsStopBtn.addEventListener('click', stopReading);
+  }
 }
 
 // Handle analyze button click
@@ -373,6 +425,9 @@ function updateProgressInfo(pauseText, timeText) {
 }
 
 function showCommentary(content) {
+  // Store commentary for TTS and pop-out
+  currentCommentaryText = content;
+
   commentaryContent.innerHTML = content;
   commentarySection.style.display = 'block';
 }
@@ -602,6 +657,142 @@ async function seekVideoTo(time) {
     await chrome.tabs.sendMessage(tab.id, { type: 'SEEK_VIDEO', time });
   } catch (error) {
     console.error('Error seeking video:', error);
+  }
+}
+
+// Text-to-Speech Functions
+function handleReadAloud() {
+  if (!currentCommentaryText) {
+    console.warn('No commentary to read');
+    return;
+  }
+
+  // Check if Web Speech API is supported
+  if (!('speechSynthesis' in window)) {
+    showError('Text-to-speech is not supported in your browser');
+    return;
+  }
+
+  // Stop any existing speech
+  if (isSpeaking) {
+    stopReading();
+    return;
+  }
+
+  // Extract plain text from commentary (remove markdown and HTML)
+  const textToRead = extractTextFromCommentary(currentCommentaryText);
+
+  // Create utterance
+  ttsUtterance = new SpeechSynthesisUtterance(textToRead);
+
+  // Configure voice (prefer English voices)
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
+  if (englishVoice) {
+    ttsUtterance.voice = englishVoice;
+  }
+
+  // Configure speech parameters
+  ttsUtterance.rate = 0.9; // Slightly slower for better comprehension
+  ttsUtterance.pitch = 1.0;
+  ttsUtterance.volume = 1.0;
+
+  // Event handlers
+  ttsUtterance.onstart = () => {
+    isSpeaking = true;
+    ttsControls.style.display = 'flex';
+    ttsPauseBtn.style.display = 'inline-block';
+    ttsResumeBtn.style.display = 'none';
+    ttsStatusText.textContent = 'Reading...';
+    readAloudBtn.textContent = '⏹️ Stop Reading';
+    console.log('Started reading commentary');
+  };
+
+  ttsUtterance.onend = () => {
+    stopReading();
+    console.log('Finished reading commentary');
+  };
+
+  ttsUtterance.onerror = (event) => {
+    console.error('Speech synthesis error:', event);
+    stopReading();
+  };
+
+  // Start speaking
+  window.speechSynthesis.speak(ttsUtterance);
+}
+
+function stopReading() {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+
+  isSpeaking = false;
+  ttsControls.style.display = 'none';
+  ttsPauseBtn.style.display = 'inline-block';
+  ttsResumeBtn.style.display = 'none';
+  readAloudBtn.textContent = '🔊 Read Aloud';
+  ttsUtterance = null;
+}
+
+function extractTextFromCommentary(htmlContent) {
+  // Create a temporary div to parse HTML
+  const temp = document.createElement('div');
+  temp.innerHTML = htmlContent;
+
+  // Remove certain elements we don't want to read
+  const elementsToRemove = temp.querySelectorAll('.commentary-header');
+  elementsToRemove.forEach(el => el.remove());
+
+  // Get text content
+  let text = temp.textContent || temp.innerText || '';
+
+  // Clean up extra whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+
+  // Add pauses after section headings (indicated by timestamps)
+  text = text.replace(/\[(\d+):(\d+)\]/g, '... $& ... ');
+
+  return text;
+}
+
+// Pop-out Window Functions
+function handlePopout() {
+  if (!currentCommentaryText || !currentVideoInfo) {
+    console.warn('No commentary to display in pop-out');
+    return;
+  }
+
+  // Create pop-out data object
+  const popoutData = {
+    videoTitle: currentVideoInfo.title,
+    videoChannel: currentVideoInfo.channel,
+    videoId: currentVideoInfo.videoId,
+    level: selectedLevel,
+    commentary: currentCommentaryText,
+    timestamp: Date.now()
+  };
+
+  // Store data in sessionStorage for the pop-out window to access
+  sessionStorage.setItem('musicCommentaryPopout', JSON.stringify(popoutData));
+
+  // Calculate pop-out window size and position
+  const width = 500;
+  const height = 600;
+  const left = (screen.width - width) / 2;
+  const top = (screen.height - height) / 2;
+
+  // Open pop-out window
+  const popout = window.open(
+    chrome.runtime.getURL('popout.html'),
+    'musicCommentaryPopout',
+    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+  );
+
+  if (popout) {
+    console.log('Opened pop-out window');
+  } else {
+    showError('Failed to open pop-out window. Please allow pop-ups for this extension.');
   }
 }
 
