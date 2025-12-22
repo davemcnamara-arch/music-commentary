@@ -1,10 +1,10 @@
 // Supabase Edge Function for Music Commentary
-// Analyzes YouTube videos using Google's Gemini API
+// Analyzes YouTube videos using OpenAI's GPT API
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,12 +18,10 @@ interface AnalyzeRequest {
   level: 'novice' | 'intermediate' | 'advanced'
 }
 
-interface GeminiResponse {
-  candidates: Array<{
-    content: {
-      parts: Array<{
-        text: string
-      }>
+interface OpenAIResponse {
+  choices: Array<{
+    message: {
+      content: string
     }
   }>
 }
@@ -48,9 +46,9 @@ serve(async (req) => {
       )
     }
 
-    if (!GEMINI_API_KEY) {
+    if (!OPENAI_API_KEY) {
       return new Response(
-        JSON.stringify({ error: 'Gemini API key not configured' }),
+        JSON.stringify({ error: 'OpenAI API key not configured' }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -63,30 +61,29 @@ serve(async (req) => {
 
     console.log(`Analyzing video ${videoId} at ${level} level`)
 
-    // Call Gemini API
-    const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    // Call OpenAI API
+    const openaiResponse = await fetch(OPENAI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        },
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
       }),
     })
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text()
-      console.error('Gemini API error:', errorText)
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text()
+      console.error('OpenAI API error:', errorText)
       return new Response(
         JSON.stringify({ error: 'Failed to analyze video', details: errorText }),
         {
@@ -96,10 +93,10 @@ serve(async (req) => {
       )
     }
 
-    const geminiData: GeminiResponse = await geminiResponse.json()
+    const openaiData: OpenAIResponse = await openaiResponse.json()
 
     // Extract the generated commentary
-    const commentary = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'No commentary generated'
+    const commentary = openaiData.choices?.[0]?.message?.content || 'No commentary generated'
 
     console.log('Successfully generated commentary')
 
