@@ -92,6 +92,49 @@
       <p class="loading-text">Analyzing video...</p>
     </section>
 
+    <!-- Progress UI -->
+    <section class="progress-section" id="progress-section" style="display: none;">
+      <h2 class="section-title">Analyzing Video...</h2>
+
+      <div class="progress-stages">
+        <div class="stage" id="stage-download">
+          <span class="stage-icon">⏳</span>
+          <div class="stage-info">
+            <span class="stage-text">Downloading audio</span>
+            <span class="stage-status">Waiting...</span>
+          </div>
+          <span class="stage-check">✓</span>
+        </div>
+
+        <div class="stage" id="stage-analysis">
+          <span class="stage-icon">⏳</span>
+          <div class="stage-info">
+            <span class="stage-text">Analyzing musical structure</span>
+            <span class="stage-status">Waiting...</span>
+          </div>
+          <span class="stage-check">✓</span>
+        </div>
+
+        <div class="stage" id="stage-commentary">
+          <span class="stage-icon">⏳</span>
+          <div class="stage-info">
+            <span class="stage-text">Generating commentary</span>
+            <span class="stage-status">Waiting...</span>
+          </div>
+          <span class="stage-check">✓</span>
+        </div>
+      </div>
+
+      <div class="progress-info">
+        <p class="pause-notice">🎬 Video paused during analysis</p>
+        <p class="time-estimate">Estimated time: ~20-30 seconds</p>
+      </div>
+
+      <button class="manual-resume-btn" id="manual-resume-btn">
+        ▶️ Resume Playing (analysis will continue)
+      </button>
+    </section>
+
     <!-- Commentary Display -->
     <section class="commentary-section" id="commentary-section" style="display: none;">
       <h2 class="section-title">Commentary</h2>

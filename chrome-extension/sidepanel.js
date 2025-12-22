@@ -14,6 +14,7 @@ const videoChannelElement = document.getElementById('video-channel');
 const selectedLevelElement = document.getElementById('selected-level');
 const analyzeBtn = document.getElementById('analyze-btn');
 const loadingSection = document.getElementById('loading-section');
+const progressSection = document.getElementById('progress-section');
 const commentarySection = document.getElementById('commentary-section');
 const commentaryContent = document.getElementById('commentary-content');
 const errorSection = document.getElementById('error-section');
@@ -23,6 +24,12 @@ const syncControls = document.getElementById('sync-controls');
 const syncEnabled = document.getElementById('sync-enabled');
 const syncModeInputs = document.querySelectorAll('input[name="sync-mode"]');
 const resumeBtn = document.getElementById('resume-btn');
+const manualResumeBtn = document.getElementById('manual-resume-btn');
+
+// Progress stage elements
+const stageDownload = document.getElementById('stage-download');
+const stageAnalysis = document.getElementById('stage-analysis');
+const stageCommentary = document.getElementById('stage-commentary');
 
 // Initialize the side panel
 async function initialize() {
@@ -123,15 +130,45 @@ async function handleAnalyze() {
     return;
   }
 
-  // Show loading state
-  showLoading();
-  hideError();
-  hideCommentary();
-
-  console.log('Analyzing video:', currentVideoInfo);
-  console.log('Level:', selectedLevel);
+  // Track if user manually resumed video
+  let userResumed = false;
 
   try {
+    // 1. PAUSE VIDEO IMMEDIATELY
+    await pauseVideo();
+    console.log('Video paused for analysis');
+
+    // 2. SHOW PROGRESS UI
+    hideError();
+    hideCommentary();
+    hideLoading();
+    showProgress();
+
+    // 3. SET UP MANUAL RESUME HANDLER
+    const handleManualResume = async () => {
+      userResumed = true;
+      await playVideo();
+      manualResumeBtn.classList.add('hidden');
+      updateProgressInfo('Analysis continuing in background...', '');
+      console.log('User manually resumed video');
+    };
+
+    manualResumeBtn.classList.remove('hidden');
+    manualResumeBtn.addEventListener('click', handleManualResume, { once: true });
+
+    console.log('Analyzing video:', currentVideoInfo);
+    console.log('Level:', selectedLevel);
+
+    // 4. START ANALYSIS - Update stage to downloading
+    updateStage('download', 'in-progress', 'Downloading audio...');
+
+    // Simulate download stage (this will be real when Modal service is integrated)
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    updateStage('download', 'completed', 'Audio downloaded');
+
+    // 5. Analysis stage
+    updateStage('analysis', 'in-progress', 'Analyzing structure...');
+
     // Call Supabase Edge Function
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
@@ -157,18 +194,40 @@ async function handleAnalyze() {
       throw new Error(errorData.error || `Server error: ${response.status}`);
     }
 
+    updateStage('analysis', 'completed', 'Analysis complete');
+
+    // 6. Commentary generation stage
+    updateStage('commentary', 'in-progress', 'Generating commentary...');
+
     const data = await response.json();
 
     if (data.success && data.commentary) {
-      hideLoading();
+      updateStage('commentary', 'completed', 'Commentary generated');
+
+      // Wait a moment to show completion
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      hideProgress();
       showCommentary(formatCommentary(data.commentary, data));
+
+      // 7. AUTO-RESUME VIDEO (if user hasn't manually resumed)
+      if (!userResumed) {
+        await playVideo();
+        console.log('Auto-resumed video after analysis complete');
+      }
     } else {
       throw new Error('Invalid response from server');
     }
 
   } catch (error) {
-    hideLoading();
+    hideProgress();
     console.error('Error analyzing video:', error);
+
+    // ALWAYS RESUME VIDEO ON ERROR
+    if (!userResumed) {
+      await playVideo();
+      console.log('Auto-resumed video after error');
+    }
 
     if (error.name === 'AbortError') {
       showError('Request timed out. The analysis is taking longer than expected. Please try again.');
@@ -251,6 +310,66 @@ function showLoading() {
 
 function hideLoading() {
   loadingSection.style.display = 'none';
+}
+
+function showProgress() {
+  progressSection.style.display = 'block';
+  // Reset all stages to waiting
+  resetStages();
+}
+
+function hideProgress() {
+  progressSection.style.display = 'none';
+}
+
+function resetStages() {
+  const stages = [stageDownload, stageAnalysis, stageCommentary];
+  stages.forEach(stage => {
+    stage.className = 'stage waiting';
+    const status = stage.querySelector('.stage-status');
+    if (status) status.textContent = 'Waiting...';
+  });
+}
+
+function updateStage(stageName, state, statusText) {
+  let stageElement;
+  switch(stageName) {
+    case 'download':
+      stageElement = stageDownload;
+      break;
+    case 'analysis':
+      stageElement = stageAnalysis;
+      break;
+    case 'commentary':
+      stageElement = stageCommentary;
+      break;
+    default:
+      return;
+  }
+
+  // Update stage class
+  stageElement.className = `stage ${state}`;
+
+  // Update status text
+  const statusElement = stageElement.querySelector('.stage-status');
+  if (statusElement) {
+    statusElement.textContent = statusText;
+  }
+
+  console.log(`Stage ${stageName}: ${state} - ${statusText}`);
+}
+
+function updateProgressInfo(pauseText, timeText) {
+  const pauseNotice = document.querySelector('.pause-notice');
+  const timeEstimate = document.querySelector('.time-estimate');
+
+  if (pauseNotice && pauseText !== undefined) {
+    pauseNotice.textContent = pauseText;
+  }
+
+  if (timeEstimate && timeText !== undefined) {
+    timeEstimate.textContent = timeText;
+  }
 }
 
 function showCommentary(content) {
