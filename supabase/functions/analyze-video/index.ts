@@ -170,25 +170,36 @@ Education Level: ${level.toUpperCase()}
 ${levelInstructions[level as keyof typeof levelInstructions]}
 
 Your task:
-1. Provide educational music commentary about this video
-2. Include insights about:
+1. Provide educational music commentary structured as TIMESTAMPED SECTIONS
+2. Divide the video into MAJOR SECTIONS ONLY (Intro, Verse, Chorus, Bridge, Outro, Solo, etc.)
+3. For each section, provide commentary about:
    - Musical elements (melody, harmony, rhythm, structure)
    - Production techniques and sound design
    - Genre characteristics and influences
    - Performance aspects
    - Historical or cultural context (if relevant)
 
-3. Format your response with clear sections using markdown:
-   - Use ## for main section headings
-   - Use **bold** for important terms
-   - Use bullet points for lists
-   - Include specific timestamps if discussing particular moments (e.g., "At 0:45, the chorus introduces...")
+4. CRITICAL FORMAT REQUIREMENTS:
+   - Start each section with a timestamp in the format: [MM:SS] Section Name
+   - Example: [0:00] Intro, [0:15] Verse 1, [0:45] Chorus, [1:15] Verse 2, etc.
+   - Use ## for the timestamp and section name heading (e.g., ## [0:00] Intro)
+   - Follow with 2-4 sentences of educational commentary for that section
+   - Use **bold** for important musical terms
+   - Use bullet points for listing specific elements
+   - Keep each section concise (50-100 words per section)
 
-4. Keep the commentary:
-   - Educational and insightful
-   - Appropriate for the ${level} level
-   - Engaging and well-structured
-   - Between 400-800 words
+5. Example structure:
+   ## [0:00] Intro
+   The song opens with...
 
-Begin your analysis:`
+   ## [0:15] Verse 1
+   The verse introduces...
+
+6. Requirements:
+   - Identify 4-8 major sections (don't over-segment)
+   - Make timestamps realistic estimates based on typical song structure
+   - Keep commentary educational and appropriate for ${level} level
+   - Total length: 400-600 words across all sections
+
+Begin your timestamped analysis:`
 }

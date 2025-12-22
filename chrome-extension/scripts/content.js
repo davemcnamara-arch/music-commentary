@@ -25,14 +25,70 @@ function getVideoInfo() {
   };
 }
 
+// Get YouTube video player
+function getYouTubePlayer() {
+  return document.querySelector('video');
+}
+
+// Get current video time
+function getCurrentTime() {
+  const player = getYouTubePlayer();
+  return player ? player.currentTime : null;
+}
+
+// Pause video
+function pauseVideo() {
+  const player = getYouTubePlayer();
+  if (player && !player.paused) {
+    player.pause();
+    console.log('Music Commentary: Video paused');
+  }
+}
+
+// Play video
+function playVideo() {
+  const player = getYouTubePlayer();
+  if (player && player.paused) {
+    player.play();
+    console.log('Music Commentary: Video playing');
+  }
+}
+
+// Seek to specific time
+function seekTo(time) {
+  const player = getYouTubePlayer();
+  if (player) {
+    player.currentTime = time;
+    console.log(`Music Commentary: Seeked to ${time}s`);
+  }
+}
+
 // Listen for messages from side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Music Commentary: Received message:', message);
+
   if (message.type === 'GET_VIDEO_INFO') {
     const videoInfo = getVideoInfo();
     console.log('Music Commentary: Sending response:', videoInfo);
     sendResponse({ success: true, data: videoInfo });
   }
+  else if (message.type === 'GET_VIDEO_TIME') {
+    const time = getCurrentTime();
+    sendResponse({ time });
+  }
+  else if (message.type === 'PAUSE_VIDEO') {
+    pauseVideo();
+    sendResponse({ success: true });
+  }
+  else if (message.type === 'PLAY_VIDEO') {
+    playVideo();
+    sendResponse({ success: true });
+  }
+  else if (message.type === 'SEEK_VIDEO') {
+    seekTo(message.time);
+    sendResponse({ success: true });
+  }
+
   return true;
 });
 

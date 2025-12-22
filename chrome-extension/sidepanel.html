@@ -58,6 +58,34 @@
       </button>
     </section>
 
+    <!-- Sync Controls -->
+    <section class="sync-controls" id="sync-controls" style="display: none;">
+      <h2 class="section-title">Video Sync</h2>
+
+      <div class="sync-toggle-container">
+        <label class="sync-toggle">
+          <input type="checkbox" id="sync-enabled" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Sync with video</span>
+        </label>
+      </div>
+
+      <div class="sync-mode" id="sync-mode-container">
+        <label class="mode-option">
+          <input type="radio" name="sync-mode" value="pause" checked>
+          <span>Auto-pause at each section</span>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="sync-mode" value="highlight">
+          <span>Highlight only (no pause)</span>
+        </label>
+      </div>
+
+      <button class="resume-btn" id="resume-btn" style="display: none;">
+        <span>▶ Resume Video</span>
+      </button>
+    </section>
+
     <!-- Loading State -->
     <section class="loading-section" id="loading-section" style="display: none;">
       <div class="loader"></div>
