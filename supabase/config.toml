@@ -16,7 +16,6 @@ enable_signup = true
 
 [functions]
 # Edge Functions configuration
-enabled = true
 
 [functions.analyze-video]
 # This function analyzes YouTube videos using Gemini API
