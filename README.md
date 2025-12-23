@@ -86,7 +86,10 @@ music-commentary/
 - ✅ **Synchronized video highlighting**
 - ✅ Interactive timestamp navigation
 - ✅ **Text-to-Speech (Read Aloud) with pause/resume/stop controls**
+- ✅ **Smart TTS integration: auto-read sections when video pauses**
+- ✅ **TTS auto-pauses when user manually resumes video**
 - ✅ **Pop-out window for flexible commentary viewing**
+- ✅ **Side panel auto-closes when pop-out opens**
 - ✅ Markdown formatting with HTML rendering
 - ✅ Level-appropriate analysis (beginner to advanced)
 

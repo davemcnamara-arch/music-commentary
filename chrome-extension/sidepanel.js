@@ -29,6 +29,7 @@ const levelButtons = document.querySelectorAll('.level-btn');
 const syncControls = document.getElementById('sync-controls');
 const syncEnabled = document.getElementById('sync-enabled');
 const syncModeInputs = document.querySelectorAll('input[name="sync-mode"]');
+const autoReadEnabled = document.getElementById('auto-read-enabled');
 const resumeBtn = document.getElementById('resume-btn');
 const manualResumeBtn = document.getElementById('manual-resume-btn');
 
@@ -523,6 +524,18 @@ function setupSyncListeners() {
     playVideo();
     resumeBtn.style.display = 'none';
     isPaused = false;
+
+    // Pause TTS if it's speaking
+    if (isSpeaking && window.speechSynthesis) {
+      window.speechSynthesis.pause();
+      if (ttsPauseBtn && ttsResumeBtn) {
+        ttsPauseBtn.style.display = 'none';
+        ttsResumeBtn.style.display = 'inline-block';
+      }
+      if (ttsStatusText) {
+        ttsStatusText.textContent = 'Paused (video resumed)';
+      }
+    }
   });
 
   // Click on timestamp sections to jump to that time
@@ -614,6 +627,18 @@ function checkAndUpdateSection(currentTime) {
       pauseVideo();
       resumeBtn.style.display = 'block';
       isPaused = true;
+
+      // Auto-read section if enabled
+      if (autoReadEnabled && autoReadEnabled.checked) {
+        // Stop any existing speech first
+        if (isSpeaking) {
+          stopReading();
+        }
+        // Read the current section
+        setTimeout(() => {
+          readCurrentSection(currentSectionIndex);
+        }, 500); // Small delay to let pause happen smoothly
+      }
     }
   }
 }
@@ -735,6 +760,78 @@ function stopReading() {
   ttsUtterance = null;
 }
 
+function readCurrentSection(sectionIndex) {
+  // Check if Web Speech API is supported
+  if (!('speechSynthesis' in window)) {
+    console.warn('Text-to-speech is not supported');
+    return;
+  }
+
+  // Get the section element
+  const sectionElement = document.querySelector(`[data-section="${sectionIndex}"]`);
+  if (!sectionElement) {
+    console.warn('Section element not found');
+    return;
+  }
+
+  // Get the section title and content
+  const sectionTitle = sectionElement.textContent || '';
+
+  // Get all content until the next section
+  let contentText = sectionTitle;
+  let nextElement = sectionElement.nextElementSibling;
+
+  while (nextElement && !nextElement.classList.contains('timestamp-section')) {
+    const text = nextElement.textContent || '';
+    if (text.trim()) {
+      contentText += ' ' + text;
+    }
+    nextElement = nextElement.nextElementSibling;
+  }
+
+  // Clean up text
+  contentText = contentText.replace(/\s+/g, ' ').trim();
+
+  // Create utterance for this section only
+  ttsUtterance = new SpeechSynthesisUtterance(contentText);
+
+  // Configure voice
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
+  if (englishVoice) {
+    ttsUtterance.voice = englishVoice;
+  }
+
+  // Configure speech parameters
+  ttsUtterance.rate = 0.9;
+  ttsUtterance.pitch = 1.0;
+  ttsUtterance.volume = 1.0;
+
+  // Event handlers
+  ttsUtterance.onstart = () => {
+    isSpeaking = true;
+    ttsControls.style.display = 'flex';
+    ttsPauseBtn.style.display = 'inline-block';
+    ttsResumeBtn.style.display = 'none';
+    ttsStatusText.textContent = 'Reading current section...';
+    readAloudBtn.textContent = '⏹️ Stop Reading';
+    console.log('Started reading section:', sectionIndex);
+  };
+
+  ttsUtterance.onend = () => {
+    stopReading();
+    console.log('Finished reading section');
+  };
+
+  ttsUtterance.onerror = (event) => {
+    console.error('Speech synthesis error:', event);
+    stopReading();
+  };
+
+  // Start speaking
+  window.speechSynthesis.speak(ttsUtterance);
+}
+
 function extractTextFromCommentary(htmlContent) {
   // Create a temporary div to parse HTML
   const temp = document.createElement('div');
@@ -791,6 +888,12 @@ function handlePopout() {
 
   if (popout) {
     console.log('Opened pop-out window');
+
+    // Close the side panel to reduce clutter
+    // User can reopen it by clicking the extension icon if needed
+    setTimeout(() => {
+      window.close();
+    }, 300); // Small delay to ensure pop-out opens first
   } else {
     showError('Failed to open pop-out window. Please allow pop-ups for this extension.');
   }
