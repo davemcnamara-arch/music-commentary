@@ -32,12 +32,13 @@ image = (
     timeout=300,  # 5 minute timeout
     memory=2048,  # 2GB memory for audio processing
 )
-def analyze_audio(video_id: str) -> dict:
+@modal.web_endpoint(method="POST")
+def analyze_audio(data: dict) -> dict:
     """
     Download and analyze audio from a YouTube video.
 
     Args:
-        video_id: YouTube video ID
+        data: Dictionary with "video_id" key
 
     Returns:
         Dictionary containing:
@@ -49,6 +50,13 @@ def analyze_audio(video_id: str) -> dict:
         - success: bool
         - error: str (if failed)
     """
+    video_id = data.get("video_id")
+
+    if not video_id:
+        return {
+            'success': False,
+            'error': 'video_id is required'
+        }
     import librosa
     import numpy as np
     import yt_dlp
