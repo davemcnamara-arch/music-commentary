@@ -5,11 +5,12 @@
 // Format: https://YOUR_PROJECT_REF.supabase.co/functions/v1/analyze-video
 
 const CONFIG = {
-  // Replace this with your deployed Supabase Edge Function URL
-  SUPABASE_FUNCTION_URL: 'YOUR_SUPABASE_FUNCTION_URL_HERE',
+  // Supabase Edge Function URL
+  // For local testing:
+  SUPABASE_FUNCTION_URL: 'http://localhost:54321/functions/v1/analyze-video',
 
-  // For local testing, use:
-  // SUPABASE_FUNCTION_URL: 'http://localhost:54321/functions/v1/analyze-video',
+  // For production, replace with your deployed URL:
+  // SUPABASE_FUNCTION_URL: 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/analyze-video',
 
   // Timeout for API requests (in milliseconds)
   API_TIMEOUT: 60000, // 60 seconds
