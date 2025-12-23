@@ -8,12 +8,19 @@ let currentSectionIndex = -1;
 let videoTimeInterval = null;
 let isPaused = false;
 
+// Text-to-Speech state
+let ttsUtterance = null;
+let ttsVoice = null;
+let currentCommentaryText = '';
+let isSpeaking = false;
+
 // DOM elements
 const videoTitleElement = document.getElementById('video-title');
 const videoChannelElement = document.getElementById('video-channel');
 const selectedLevelElement = document.getElementById('selected-level');
 const analyzeBtn = document.getElementById('analyze-btn');
 const loadingSection = document.getElementById('loading-section');
+const progressSection = document.getElementById('progress-section');
 const commentarySection = document.getElementById('commentary-section');
 const commentaryContent = document.getElementById('commentary-content');
 const errorSection = document.getElementById('error-section');
@@ -22,7 +29,23 @@ const levelButtons = document.querySelectorAll('.level-btn');
 const syncControls = document.getElementById('sync-controls');
 const syncEnabled = document.getElementById('sync-enabled');
 const syncModeInputs = document.querySelectorAll('input[name="sync-mode"]');
+const autoReadEnabled = document.getElementById('auto-read-enabled');
 const resumeBtn = document.getElementById('resume-btn');
+const manualResumeBtn = document.getElementById('manual-resume-btn');
+
+// Progress stage elements
+const stageDownload = document.getElementById('stage-download');
+const stageAnalysis = document.getElementById('stage-analysis');
+const stageCommentary = document.getElementById('stage-commentary');
+
+// TTS and Pop-out elements
+const readAloudBtn = document.getElementById('read-aloud-btn');
+const popoutBtn = document.getElementById('popout-btn');
+const ttsControls = document.getElementById('tts-controls');
+const ttsStatusText = document.getElementById('tts-status-text');
+const ttsPauseBtn = document.getElementById('tts-pause-btn');
+const ttsResumeBtn = document.getElementById('tts-resume-btn');
+const ttsStopBtn = document.getElementById('tts-stop-btn');
 
 // Initialize the side panel
 async function initialize() {
@@ -108,6 +131,43 @@ function setupEventListeners() {
 
   // Analyze button listener
   analyzeBtn.addEventListener('click', handleAnalyze);
+
+  // Read Aloud button listener
+  if (readAloudBtn) {
+    readAloudBtn.addEventListener('click', handleReadAloud);
+  }
+
+  // Pop-out button listener
+  if (popoutBtn) {
+    popoutBtn.addEventListener('click', handlePopout);
+  }
+
+  // TTS control listeners
+  if (ttsPauseBtn) {
+    ttsPauseBtn.addEventListener('click', () => {
+      if (window.speechSynthesis && isSpeaking) {
+        window.speechSynthesis.pause();
+        ttsPauseBtn.style.display = 'none';
+        ttsResumeBtn.style.display = 'inline-block';
+        ttsStatusText.textContent = 'Paused';
+      }
+    });
+  }
+
+  if (ttsResumeBtn) {
+    ttsResumeBtn.addEventListener('click', () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.resume();
+        ttsResumeBtn.style.display = 'none';
+        ttsPauseBtn.style.display = 'inline-block';
+        ttsStatusText.textContent = 'Reading...';
+      }
+    });
+  }
+
+  if (ttsStopBtn) {
+    ttsStopBtn.addEventListener('click', stopReading);
+  }
 }
 
 // Handle analyze button click
@@ -123,15 +183,45 @@ async function handleAnalyze() {
     return;
   }
 
-  // Show loading state
-  showLoading();
-  hideError();
-  hideCommentary();
-
-  console.log('Analyzing video:', currentVideoInfo);
-  console.log('Level:', selectedLevel);
+  // Track if user manually resumed video
+  let userResumed = false;
 
   try {
+    // 1. PAUSE VIDEO IMMEDIATELY
+    await pauseVideo();
+    console.log('Video paused for analysis');
+
+    // 2. SHOW PROGRESS UI
+    hideError();
+    hideCommentary();
+    hideLoading();
+    showProgress();
+
+    // 3. SET UP MANUAL RESUME HANDLER
+    const handleManualResume = async () => {
+      userResumed = true;
+      await playVideo();
+      manualResumeBtn.classList.add('hidden');
+      updateProgressInfo('Analysis continuing in background...', '');
+      console.log('User manually resumed video');
+    };
+
+    manualResumeBtn.classList.remove('hidden');
+    manualResumeBtn.addEventListener('click', handleManualResume, { once: true });
+
+    console.log('Analyzing video:', currentVideoInfo);
+    console.log('Level:', selectedLevel);
+
+    // 4. START ANALYSIS - Update stage to downloading
+    updateStage('download', 'in-progress', 'Downloading audio...');
+
+    // Simulate download stage (this will be real when Modal service is integrated)
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    updateStage('download', 'completed', 'Audio downloaded');
+
+    // 5. Analysis stage
+    updateStage('analysis', 'in-progress', 'Analyzing structure...');
+
     // Call Supabase Edge Function
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
@@ -157,18 +247,40 @@ async function handleAnalyze() {
       throw new Error(errorData.error || `Server error: ${response.status}`);
     }
 
+    updateStage('analysis', 'completed', 'Analysis complete');
+
+    // 6. Commentary generation stage
+    updateStage('commentary', 'in-progress', 'Generating commentary...');
+
     const data = await response.json();
 
     if (data.success && data.commentary) {
-      hideLoading();
+      updateStage('commentary', 'completed', 'Commentary generated');
+
+      // Wait a moment to show completion
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      hideProgress();
       showCommentary(formatCommentary(data.commentary, data));
+
+      // 7. AUTO-RESUME VIDEO (if user hasn't manually resumed)
+      if (!userResumed) {
+        await playVideo();
+        console.log('Auto-resumed video after analysis complete');
+      }
     } else {
       throw new Error('Invalid response from server');
     }
 
   } catch (error) {
-    hideLoading();
+    hideProgress();
     console.error('Error analyzing video:', error);
+
+    // ALWAYS RESUME VIDEO ON ERROR
+    if (!userResumed) {
+      await playVideo();
+      console.log('Auto-resumed video after error');
+    }
 
     if (error.name === 'AbortError') {
       showError('Request timed out. The analysis is taking longer than expected. Please try again.');
@@ -253,7 +365,70 @@ function hideLoading() {
   loadingSection.style.display = 'none';
 }
 
+function showProgress() {
+  progressSection.style.display = 'block';
+  // Reset all stages to waiting
+  resetStages();
+}
+
+function hideProgress() {
+  progressSection.style.display = 'none';
+}
+
+function resetStages() {
+  const stages = [stageDownload, stageAnalysis, stageCommentary];
+  stages.forEach(stage => {
+    stage.className = 'stage waiting';
+    const status = stage.querySelector('.stage-status');
+    if (status) status.textContent = 'Waiting...';
+  });
+}
+
+function updateStage(stageName, state, statusText) {
+  let stageElement;
+  switch(stageName) {
+    case 'download':
+      stageElement = stageDownload;
+      break;
+    case 'analysis':
+      stageElement = stageAnalysis;
+      break;
+    case 'commentary':
+      stageElement = stageCommentary;
+      break;
+    default:
+      return;
+  }
+
+  // Update stage class
+  stageElement.className = `stage ${state}`;
+
+  // Update status text
+  const statusElement = stageElement.querySelector('.stage-status');
+  if (statusElement) {
+    statusElement.textContent = statusText;
+  }
+
+  console.log(`Stage ${stageName}: ${state} - ${statusText}`);
+}
+
+function updateProgressInfo(pauseText, timeText) {
+  const pauseNotice = document.querySelector('.pause-notice');
+  const timeEstimate = document.querySelector('.time-estimate');
+
+  if (pauseNotice && pauseText !== undefined) {
+    pauseNotice.textContent = pauseText;
+  }
+
+  if (timeEstimate && timeText !== undefined) {
+    timeEstimate.textContent = timeText;
+  }
+}
+
 function showCommentary(content) {
+  // Store commentary for TTS and pop-out
+  currentCommentaryText = content;
+
   commentaryContent.innerHTML = content;
   commentarySection.style.display = 'block';
 }
@@ -349,6 +524,18 @@ function setupSyncListeners() {
     playVideo();
     resumeBtn.style.display = 'none';
     isPaused = false;
+
+    // Pause TTS if it's speaking
+    if (isSpeaking && window.speechSynthesis) {
+      window.speechSynthesis.pause();
+      if (ttsPauseBtn && ttsResumeBtn) {
+        ttsPauseBtn.style.display = 'none';
+        ttsResumeBtn.style.display = 'inline-block';
+      }
+      if (ttsStatusText) {
+        ttsStatusText.textContent = 'Paused (video resumed)';
+      }
+    }
   });
 
   // Click on timestamp sections to jump to that time
@@ -440,6 +627,18 @@ function checkAndUpdateSection(currentTime) {
       pauseVideo();
       resumeBtn.style.display = 'block';
       isPaused = true;
+
+      // Auto-read section if enabled
+      if (autoReadEnabled && autoReadEnabled.checked) {
+        // Stop any existing speech first
+        if (isSpeaking) {
+          stopReading();
+        }
+        // Read the current section
+        setTimeout(() => {
+          readCurrentSection(currentSectionIndex);
+        }, 500); // Small delay to let pause happen smoothly
+      }
     }
   }
 }
@@ -483,6 +682,220 @@ async function seekVideoTo(time) {
     await chrome.tabs.sendMessage(tab.id, { type: 'SEEK_VIDEO', time });
   } catch (error) {
     console.error('Error seeking video:', error);
+  }
+}
+
+// Text-to-Speech Functions
+function handleReadAloud() {
+  if (!currentCommentaryText) {
+    console.warn('No commentary to read');
+    return;
+  }
+
+  // Check if Web Speech API is supported
+  if (!('speechSynthesis' in window)) {
+    showError('Text-to-speech is not supported in your browser');
+    return;
+  }
+
+  // Stop any existing speech
+  if (isSpeaking) {
+    stopReading();
+    return;
+  }
+
+  // Extract plain text from commentary (remove markdown and HTML)
+  const textToRead = extractTextFromCommentary(currentCommentaryText);
+
+  // Create utterance
+  ttsUtterance = new SpeechSynthesisUtterance(textToRead);
+
+  // Configure voice (prefer English voices)
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
+  if (englishVoice) {
+    ttsUtterance.voice = englishVoice;
+  }
+
+  // Configure speech parameters
+  ttsUtterance.rate = 0.9; // Slightly slower for better comprehension
+  ttsUtterance.pitch = 1.0;
+  ttsUtterance.volume = 1.0;
+
+  // Event handlers
+  ttsUtterance.onstart = () => {
+    isSpeaking = true;
+    ttsControls.style.display = 'flex';
+    ttsPauseBtn.style.display = 'inline-block';
+    ttsResumeBtn.style.display = 'none';
+    ttsStatusText.textContent = 'Reading...';
+    readAloudBtn.textContent = '⏹️ Stop Reading';
+    console.log('Started reading commentary');
+  };
+
+  ttsUtterance.onend = () => {
+    stopReading();
+    console.log('Finished reading commentary');
+  };
+
+  ttsUtterance.onerror = (event) => {
+    console.error('Speech synthesis error:', event);
+    stopReading();
+  };
+
+  // Start speaking
+  window.speechSynthesis.speak(ttsUtterance);
+}
+
+function stopReading() {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+
+  isSpeaking = false;
+  ttsControls.style.display = 'none';
+  ttsPauseBtn.style.display = 'inline-block';
+  ttsResumeBtn.style.display = 'none';
+  readAloudBtn.textContent = '🔊 Read Aloud';
+  ttsUtterance = null;
+}
+
+function readCurrentSection(sectionIndex) {
+  // Check if Web Speech API is supported
+  if (!('speechSynthesis' in window)) {
+    console.warn('Text-to-speech is not supported');
+    return;
+  }
+
+  // Get the section element
+  const sectionElement = document.querySelector(`[data-section="${sectionIndex}"]`);
+  if (!sectionElement) {
+    console.warn('Section element not found');
+    return;
+  }
+
+  // Get the section title and content
+  const sectionTitle = sectionElement.textContent || '';
+
+  // Get all content until the next section
+  let contentText = sectionTitle;
+  let nextElement = sectionElement.nextElementSibling;
+
+  while (nextElement && !nextElement.classList.contains('timestamp-section')) {
+    const text = nextElement.textContent || '';
+    if (text.trim()) {
+      contentText += ' ' + text;
+    }
+    nextElement = nextElement.nextElementSibling;
+  }
+
+  // Clean up text
+  contentText = contentText.replace(/\s+/g, ' ').trim();
+
+  // Create utterance for this section only
+  ttsUtterance = new SpeechSynthesisUtterance(contentText);
+
+  // Configure voice
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
+  if (englishVoice) {
+    ttsUtterance.voice = englishVoice;
+  }
+
+  // Configure speech parameters
+  ttsUtterance.rate = 0.9;
+  ttsUtterance.pitch = 1.0;
+  ttsUtterance.volume = 1.0;
+
+  // Event handlers
+  ttsUtterance.onstart = () => {
+    isSpeaking = true;
+    ttsControls.style.display = 'flex';
+    ttsPauseBtn.style.display = 'inline-block';
+    ttsResumeBtn.style.display = 'none';
+    ttsStatusText.textContent = 'Reading current section...';
+    readAloudBtn.textContent = '⏹️ Stop Reading';
+    console.log('Started reading section:', sectionIndex);
+  };
+
+  ttsUtterance.onend = () => {
+    stopReading();
+    console.log('Finished reading section');
+  };
+
+  ttsUtterance.onerror = (event) => {
+    console.error('Speech synthesis error:', event);
+    stopReading();
+  };
+
+  // Start speaking
+  window.speechSynthesis.speak(ttsUtterance);
+}
+
+function extractTextFromCommentary(htmlContent) {
+  // Create a temporary div to parse HTML
+  const temp = document.createElement('div');
+  temp.innerHTML = htmlContent;
+
+  // Remove certain elements we don't want to read
+  const elementsToRemove = temp.querySelectorAll('.commentary-header');
+  elementsToRemove.forEach(el => el.remove());
+
+  // Get text content
+  let text = temp.textContent || temp.innerText || '';
+
+  // Clean up extra whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+
+  // Add pauses after section headings (indicated by timestamps)
+  text = text.replace(/\[(\d+):(\d+)\]/g, '... $& ... ');
+
+  return text;
+}
+
+// Pop-out Window Functions
+function handlePopout() {
+  if (!currentCommentaryText || !currentVideoInfo) {
+    console.warn('No commentary to display in pop-out');
+    return;
+  }
+
+  // Create pop-out data object
+  const popoutData = {
+    videoTitle: currentVideoInfo.title,
+    videoChannel: currentVideoInfo.channel,
+    videoId: currentVideoInfo.videoId,
+    level: selectedLevel,
+    commentary: currentCommentaryText,
+    timestamp: Date.now()
+  };
+
+  // Store data in sessionStorage for the pop-out window to access
+  sessionStorage.setItem('musicCommentaryPopout', JSON.stringify(popoutData));
+
+  // Calculate pop-out window size and position
+  const width = 500;
+  const height = 600;
+  const left = (screen.width - width) / 2;
+  const top = (screen.height - height) / 2;
+
+  // Open pop-out window
+  const popout = window.open(
+    chrome.runtime.getURL('popout.html'),
+    'musicCommentaryPopout',
+    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+  );
+
+  if (popout) {
+    console.log('Opened pop-out window');
+
+    // Close the side panel to reduce clutter
+    // User can reopen it by clicking the extension icon if needed
+    setTimeout(() => {
+      window.close();
+    }, 300); // Small delay to ensure pop-out opens first
+  } else {
+    showError('Failed to open pop-out window. Please allow pop-ups for this extension.');
   }
 }
 

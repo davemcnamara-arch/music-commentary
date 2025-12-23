@@ -81,6 +81,13 @@
         </label>
       </div>
 
+      <div class="auto-read-container">
+        <label class="mode-option">
+          <input type="checkbox" id="auto-read-enabled">
+          <span>🔊 Auto-read sections when paused</span>
+        </label>
+      </div>
+
       <button class="resume-btn" id="resume-btn" style="display: none;">
         <span>▶ Resume Video</span>
       </button>
@@ -92,9 +99,76 @@
       <p class="loading-text">Analyzing video...</p>
     </section>
 
+    <!-- Progress UI -->
+    <section class="progress-section" id="progress-section" style="display: none;">
+      <h2 class="section-title">Analyzing Video...</h2>
+
+      <div class="progress-stages">
+        <div class="stage" id="stage-download">
+          <span class="stage-icon">⏳</span>
+          <div class="stage-info">
+            <span class="stage-text">Downloading audio</span>
+            <span class="stage-status">Waiting...</span>
+          </div>
+          <span class="stage-check">✓</span>
+        </div>
+
+        <div class="stage" id="stage-analysis">
+          <span class="stage-icon">⏳</span>
+          <div class="stage-info">
+            <span class="stage-text">Analyzing musical structure</span>
+            <span class="stage-status">Waiting...</span>
+          </div>
+          <span class="stage-check">✓</span>
+        </div>
+
+        <div class="stage" id="stage-commentary">
+          <span class="stage-icon">⏳</span>
+          <div class="stage-info">
+            <span class="stage-text">Generating commentary</span>
+            <span class="stage-status">Waiting...</span>
+          </div>
+          <span class="stage-check">✓</span>
+        </div>
+      </div>
+
+      <div class="progress-info">
+        <p class="pause-notice">🎬 Video paused during analysis</p>
+        <p class="time-estimate">Estimated time: ~20-30 seconds</p>
+      </div>
+
+      <button class="manual-resume-btn" id="manual-resume-btn">
+        ▶️ Resume Playing (analysis will continue)
+      </button>
+    </section>
+
     <!-- Commentary Display -->
     <section class="commentary-section" id="commentary-section" style="display: none;">
-      <h2 class="section-title">Commentary</h2>
+      <div class="commentary-header-controls">
+        <h2 class="section-title">Commentary</h2>
+        <div class="commentary-actions">
+          <button class="action-btn popout-btn" id="popout-btn" title="Open in pop-out window">
+            ↗️ Pop Out
+          </button>
+          <button class="action-btn read-aloud-btn" id="read-aloud-btn" title="Read commentary aloud">
+            🔊 Read Aloud
+          </button>
+        </div>
+      </div>
+
+      <!-- Text-to-Speech Controls (hidden by default) -->
+      <div class="tts-controls" id="tts-controls" style="display: none;">
+        <div class="tts-status">
+          <span class="tts-icon">🔊</span>
+          <span class="tts-text" id="tts-status-text">Reading...</span>
+        </div>
+        <div class="tts-buttons">
+          <button class="tts-btn" id="tts-pause-btn">⏸️ Pause</button>
+          <button class="tts-btn" id="tts-resume-btn" style="display: none;">▶️ Resume</button>
+          <button class="tts-btn tts-stop-btn" id="tts-stop-btn">⏹️ Stop</button>
+        </div>
+      </div>
+
       <div class="commentary-content" id="commentary-content">
         <!-- Commentary will be inserted here -->
       </div>
