@@ -119,8 +119,14 @@ serve(async (req) => {
           body: JSON.stringify({ video_id: videoId }),
         })
 
+        console.log('Modal response status:', modalResponse.status)
+
         if (modalResponse.ok) {
-          audioAnalysis = await modalResponse.json()
+          const rawResponse = await modalResponse.text()
+          console.log('Modal raw response:', rawResponse.substring(0, 200))
+
+          audioAnalysis = JSON.parse(rawResponse)
+          console.log('Parsed audioAnalysis:', JSON.stringify(audioAnalysis).substring(0, 200))
 
           // Cache the analysis if successful
           if (audioAnalysis?.success && supabase) {
@@ -138,9 +144,12 @@ serve(async (req) => {
               })
 
             console.log('Audio analysis cached successfully')
+          } else {
+            console.warn('Modal returned success=false or no supabase client')
           }
         } else {
-          console.warn('Modal audio analysis failed, using fallback')
+          const errorText = await modalResponse.text()
+          console.warn('Modal audio analysis failed with status', modalResponse.status, ':', errorText)
         }
       } catch (modalError) {
         console.error('Error calling Modal service:', modalError)

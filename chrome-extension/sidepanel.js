@@ -833,6 +833,11 @@ function readCurrentSection(sectionIndex) {
 }
 
 function extractTextFromCommentary(htmlContent) {
+  // If it's already plain text, return it
+  if (typeof htmlContent === 'string' && !htmlContent.includes('<')) {
+    return htmlContent;
+  }
+
   // Create a temporary div to parse HTML
   const temp = document.createElement('div');
   temp.innerHTML = htmlContent;
@@ -841,14 +846,22 @@ function extractTextFromCommentary(htmlContent) {
   const elementsToRemove = temp.querySelectorAll('.commentary-header');
   elementsToRemove.forEach(el => el.remove());
 
-  // Get text content
-  let text = temp.textContent || temp.innerText || '';
+  // Get text content - use innerText first as it preserves spacing better
+  let text = temp.innerText || temp.textContent || '';
+
+  // If we got very little text, try a different approach
+  if (text.length < 50 && htmlContent.length > 100) {
+    // Fallback: strip HTML tags manually
+    text = htmlContent.replace(/<[^>]*>/g, ' ');
+  }
 
   // Clean up extra whitespace
   text = text.replace(/\s+/g, ' ').trim();
 
   // Add pauses after section headings (indicated by timestamps)
   text = text.replace(/\[(\d+):(\d+)\]/g, '... $& ... ');
+
+  console.log('TTS text length:', text.length, 'First 200 chars:', text.substring(0, 200));
 
   return text;
 }
