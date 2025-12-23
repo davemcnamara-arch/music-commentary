@@ -289,44 +289,30 @@ Video Information:
 - Title: ${videoTitle}
 - Channel: ${channelName}
 - YouTube URL: https://www.youtube.com/watch?v=${videoId}
-${audioContext}
 
 Education Level: ${level.toUpperCase()}
 ${levelInstructions[level as keyof typeof levelInstructions]}
 
 Your task:
-1. Provide educational music commentary structured as TIMESTAMPED SECTIONS
-2. Divide the video into MAJOR SECTIONS (Intro, Verse, Chorus, Bridge, Outro, Solo, etc.)
-3. For each section, provide commentary about:
-   - Musical elements (melody, harmony, rhythm, structure)
-   - Production techniques and sound design
-   - Genre characteristics and influences
-   - Performance aspects
-   - Historical or cultural context (if relevant)
+Provide comprehensive educational music commentary that analyzes the song's musical elements, production, and artistic choices. Structure your analysis by discussing different aspects of the music, such as:
+- **Song Structure**: How the piece is organized (intro, verses, chorus, bridge, etc.)
+- **Melody & Harmony**: Melodic motifs, harmonic progressions, key signatures
+- **Rhythm & Tempo**: Rhythmic patterns, groove, time signatures
+- **Instrumentation & Production**: Choice of instruments, sound design, mixing techniques
+- **Performance**: Vocal techniques, instrumental performances, dynamics
+- **Genre & Context**: Genre characteristics, influences, cultural/historical significance
 
-4. CRITICAL FORMAT REQUIREMENTS:
-   - Start each section with a timestamp in the format: ## [MM:SS] Section Name
-   - Example: ## [0:00] Intro, ## [0:15] Verse 1, ## [0:45] Chorus
-   - Follow with 2-4 sentences of educational commentary for that section
-   - Use **bold** for important musical terms
-   - Use bullet points for listing specific elements
-   - Keep each section concise (50-100 words per section)
+Format Requirements:
+- Use section headings (##) to organize different aspects of your analysis
+- Use **bold** for important musical terms
+- Use bullet points for listing specific elements
+- Write in a flowing, essay-like style (not timestamped)
+- Total length: 500-700 words
+- Keep commentary educational and appropriate for ${level} level
 
-5. Example structure:
-   ## [0:00] Intro
-   The song opens with...
+Focus on providing deep insight into the music itself rather than describing what happens at specific moments in time. Help the reader understand WHY the musical choices work and WHAT techniques are being used.
 
-   ## [0:15] Verse 1
-   The verse introduces...
-
-6. Requirements:
-   - ${timestampGuidance}
-   - Identify 4-8 major sections (don't over-segment)
-   - Keep commentary educational and appropriate for ${level} level
-   - Total length: 400-600 words across all sections
-   ${audioAnalysis?.success ? `- Reference the detected tempo (${audioAnalysis.tempo?.toFixed(0)} BPM) and key (${audioAnalysis.key}) in your analysis` : ''}
-
-Begin your timestamped analysis:`
+Begin your analysis:`
 }
 
 // Helper function to format seconds to MM:SS
