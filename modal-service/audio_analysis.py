@@ -23,6 +23,7 @@ image = (
         "scipy>=1.11.0",
         "soundfile>=0.12.1",
         "scikit-learn>=1.3.0",
+        "fastapi>=0.109.0",  # Required for web endpoints
     )
 )
 
