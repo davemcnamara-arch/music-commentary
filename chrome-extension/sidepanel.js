@@ -2,6 +2,7 @@
 
 // State management
 let currentVideoInfo = null;
+let youtubeCookies = null;
 let selectedLevel = null;
 let timestampedSections = [];
 let currentSectionIndex = -1;
@@ -212,17 +213,22 @@ async function handleAnalyze() {
     console.log('Analyzing video:', currentVideoInfo);
     console.log('Level:', selectedLevel);
 
-    // 4. START ANALYSIS - Update stage to downloading
+    // 4. GET YOUTUBE COOKIES FOR AUDIO DOWNLOAD
+    updateProgressInfo('🔐 Getting cookies for audio download...', 'Estimated time: ~20-30 seconds');
+    youtubeCookies = await getYouTubeCookies();
+
+    if (!youtubeCookies) {
+      throw new Error('Failed to get YouTube cookies. Please make sure you are logged into YouTube.');
+    }
+
+    console.log('Successfully captured YouTube cookies');
+
+    // 5. START ANALYSIS - Update stage to downloading
     updateStage('download', 'in-progress', 'Downloading audio...');
 
-    // Simulate download stage (this will be real when Modal service is integrated)
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    updateStage('download', 'completed', 'Audio downloaded');
-
-    // 5. Analysis stage
+    // 6. Call Supabase Edge Function with cookies
     updateStage('analysis', 'in-progress', 'Analyzing structure...');
 
-    // Call Supabase Edge Function
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
 
@@ -236,6 +242,7 @@ async function handleAnalyze() {
         videoTitle: currentVideoInfo.title,
         channelName: currentVideoInfo.channel,
         level: selectedLevel,
+        cookies: youtubeCookies,
       }),
       signal: controller.signal,
     });
@@ -249,7 +256,7 @@ async function handleAnalyze() {
 
     updateStage('analysis', 'completed', 'Analysis complete');
 
-    // 6. Commentary generation stage
+    // 7. Commentary generation stage
     updateStage('commentary', 'in-progress', 'Generating commentary...');
 
     const data = await response.json();
@@ -263,7 +270,11 @@ async function handleAnalyze() {
       hideProgress();
       showCommentary(formatCommentary(data.commentary, data));
 
-      // 7. AUTO-RESUME VIDEO (if user hasn't manually resumed)
+      // Clear cookies from memory (privacy)
+      youtubeCookies = null;
+      console.log('Cleared cookies from memory');
+
+      // 8. AUTO-RESUME VIDEO (if user hasn't manually resumed)
       if (!userResumed) {
         await playVideo();
         console.log('Auto-resumed video after analysis complete');
@@ -275,6 +286,9 @@ async function handleAnalyze() {
   } catch (error) {
     hideProgress();
     console.error('Error analyzing video:', error);
+
+    // Clear cookies from memory (privacy)
+    youtubeCookies = null;
 
     // ALWAYS RESUME VIDEO ON ERROR
     if (!userResumed) {
@@ -909,6 +923,31 @@ function handlePopout() {
     }, 300); // Small delay to ensure pop-out opens first
   } else {
     showError('Failed to open pop-out window. Please allow pop-ups for this extension.');
+  }
+}
+
+// Get YouTube cookies for audio download
+async function getYouTubeCookies() {
+  try {
+    console.log('Getting YouTube cookies...');
+
+    // Get all cookies from .youtube.com domain
+    const cookies = await chrome.cookies.getAll({
+      domain: '.youtube.com'
+    });
+
+    console.log(`Found ${cookies.length} YouTube cookies`);
+
+    // Convert to simple object { name: value }
+    const cookieDict = {};
+    cookies.forEach(cookie => {
+      cookieDict[cookie.name] = cookie.value;
+    });
+
+    return cookieDict;
+  } catch (error) {
+    console.error('Error getting YouTube cookies:', error);
+    return null;
   }
 }
 
