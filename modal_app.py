@@ -17,6 +17,7 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")  # Required for audio processing
     .pip_install(
+        "fastapi[standard]",  # Required for web endpoints
         "yt-dlp",  # YouTube download with cookie support
         "librosa",  # Audio analysis
         "numpy",  # Librosa dependency
