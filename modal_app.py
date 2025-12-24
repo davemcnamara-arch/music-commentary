@@ -150,6 +150,13 @@ def analyze_youtube_audio(youtube_url: str, cookies: dict) -> dict:
         duration = librosa.get_duration(y=y, sr=sr)
         print(f"Audio loaded: {duration:.2f} seconds at {sr} Hz")
 
+        # For very long videos (>10 min), warn and limit analysis
+        if duration > 600:
+            print(f"Warning: Long video ({duration:.0f}s). Analyzing first 10 minutes only.")
+            max_samples = int(600 * sr)
+            y = y[:max_samples]
+            duration = 600.0
+
         # Analyze beats and tempo
         print("Detecting beats and tempo...")
         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
