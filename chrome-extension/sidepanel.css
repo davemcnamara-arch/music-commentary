@@ -638,6 +638,34 @@ section {
   background: var(--text-secondary);
 }
 
+/* Structure Overview Styling */
+.structure-overview {
+  background: #f8f9fa;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  font-family: 'Courier New', monospace;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.structure-title {
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 15px;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.chord-progressions {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #dee2e6;
+}
+
 /* Error Display */
 .error-content {
   display: flex;

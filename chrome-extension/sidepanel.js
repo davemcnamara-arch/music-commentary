@@ -308,11 +308,30 @@ async function handleAnalyze() {
 
 // Format commentary from API response
 function formatCommentary(commentary, data) {
-  // Parse timestamps from commentary
-  timestampedSections = parseTimestamps(commentary);
+  // Check if commentary contains structure overview
+  const parts = commentary.split('DETAILED ANALYSIS');
 
-  // Convert markdown to HTML with timestamp data
-  const html = markdownToHtmlWithTimestamps(commentary);
+  let structureHtml = '';
+  let detailedHtml = '';
+
+  if (parts.length === 2) {
+    // Has structure overview
+    const structureOverview = parts[0].trim();
+    const detailedAnalysis = parts[1].trim();
+
+    // Format structure overview (keep as monospace text)
+    structureHtml = `<div class="structure-overview">${escapeHtml(structureOverview)}</div>`;
+
+    // Parse timestamps from detailed analysis
+    timestampedSections = parseTimestamps(detailedAnalysis);
+
+    // Convert detailed analysis to HTML with timestamp data
+    detailedHtml = markdownToHtmlWithTimestamps(detailedAnalysis);
+  } else {
+    // No structure overview, fallback to old behavior
+    timestampedSections = parseTimestamps(commentary);
+    detailedHtml = markdownToHtmlWithTimestamps(commentary);
+  }
 
   // Show sync controls if we have timestamps
   if (timestampedSections.length > 0) {
@@ -332,8 +351,10 @@ function formatCommentary(commentary, data) {
       </div>
     </div>
 
+    ${structureHtml}
+
     <div class="commentary-body" id="commentary-body">
-      ${html}
+      ${detailedHtml}
     </div>
   `;
 }
@@ -954,6 +975,12 @@ async function getYouTubeCookies() {
 // Utility functions
 function capitalizeFirst(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // Listen for video changes from content script

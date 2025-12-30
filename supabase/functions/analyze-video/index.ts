@@ -33,6 +33,22 @@ interface AudioAnalysis {
     end: number
     type: string
   }>
+  chords?: Array<{
+    time: number
+    chord: string
+  }>
+}
+
+interface ClassifiedSection {
+  start: number
+  end: number
+  type: string
+  classifiedName: string
+}
+
+interface ChordProgression {
+  section: string
+  chords: string
 }
 
 interface OpenAIResponse {
@@ -173,17 +189,24 @@ serve(async (req) => {
 
       // 3. Cache the analysis results
       console.log('Caching analysis results...')
+      const cacheData: any = {
+        video_id: videoId,
+        video_title: videoTitle,
+        duration: audioAnalysis.duration,
+        tempo: audioAnalysis.tempo,
+        key: audioAnalysis.key,
+        beats: audioAnalysis.beats,
+        sections: audioAnalysis.sections,
+      }
+
+      // Add chords if available
+      if (audioAnalysis.chords) {
+        cacheData.chords = audioAnalysis.chords
+      }
+
       const { error: insertError } = await supabase
         .from('audio_analysis_cache')
-        .insert({
-          video_id: videoId,
-          video_title: videoTitle,
-          duration: audioAnalysis.duration,
-          tempo: audioAnalysis.tempo,
-          key: audioAnalysis.key,
-          beats: audioAnalysis.beats,
-          sections: audioAnalysis.sections,
-        })
+        .insert(cacheData)
 
       if (insertError) {
         console.error('Error caching analysis:', insertError)
@@ -193,16 +216,31 @@ serve(async (req) => {
       }
     }
 
-    // 4. Build OpenAI prompt with exact timestamps
-    console.log('Building prompt with timestamps...')
-    const prompt = buildPromptWithTimestamps(
+    // 4. Detect genre and classify sections
+    console.log('Detecting genre and classifying sections...')
+    const genre = detectGenre(videoTitle, channelName)
+    const classifiedSections = classifySections(audioAnalysis.sections, genre, audioAnalysis)
+
+    // 5. Summarize chord progressions (for pop/jazz/rock)
+    let chordProgressions: ChordProgression[] | null = null
+    if (['pop', 'jazz', 'rock', 'folk'].includes(genre) && audioAnalysis.chords) {
+      console.log('Summarizing chord progressions...')
+      chordProgressions = summarizeChordProgressions(classifiedSections, audioAnalysis.chords, audioAnalysis.key)
+    }
+
+    // 6. Build enhanced prompt
+    console.log('Building enhanced prompt...')
+    const prompt = buildEnhancedPrompt(
       videoTitle,
       channelName,
       level,
-      audioAnalysis
+      genre,
+      classifiedSections,
+      audioAnalysis,
+      chordProgressions
     )
 
-    // 5. Call OpenAI to generate commentary
+    // 7. Call OpenAI to generate commentary
     console.log('Generating commentary with OpenAI...')
     const openaiResponse = await fetch(OPENAI_API_URL, {
       method: 'POST',
@@ -211,7 +249,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'user',
@@ -219,7 +257,7 @@ serve(async (req) => {
           }
         ],
         temperature: 0.7,
-        max_tokens: 2000,
+        max_tokens: 3000,
       }),
     })
 
@@ -282,6 +320,425 @@ function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function detectGenre(title: string, channel: string): string {
+  const text = `${title} ${channel}`.toLowerCase()
+
+  // Classical
+  if (text.match(/symphony|concerto|sonata|quartet|bach|beethoven|mozart|chopin|brahms|tchaikovsky|classical/i)) {
+    return 'classical'
+  }
+
+  // Jazz
+  if (text.match(/jazz|bebop|swing|miles davis|coltrane|monk|mingus|trio|quartet|standards/i)) {
+    return 'jazz'
+  }
+
+  // Folk
+  if (text.match(/folk|traditional|ballad|acoustic|singer.songwriter/i)) {
+    return 'folk'
+  }
+
+  // Hip-hop
+  if (text.match(/rap|hip.?hop|beat|freestyle|mc |dj |trap|drill/i)) {
+    return 'hiphop'
+  }
+
+  // Electronic
+  if (text.match(/edm|techno|house|electronic|synth|dnb|dubstep|trance/i)) {
+    return 'electronic'
+  }
+
+  // Rock
+  if (text.match(/rock|metal|punk|grunge|alternative/i)) {
+    return 'rock'
+  }
+
+  // Default to pop
+  return 'pop'
+}
+
+function classifyPopSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  return sections.map((section, i) => {
+    let name = ''
+
+    if (i === 0) {
+      name = 'Introduction'
+    } else if (i === sections.length - 1) {
+      name = 'Outro'
+    } else {
+      // Verse-chorus pattern
+      const position = (i - 1) % 4
+      if (position === 0) name = `Verse ${Math.floor((i - 1) / 4) + 1}`
+      else if (position === 1) name = 'Pre-Chorus'
+      else if (position === 2) name = 'Chorus'
+      else name = i > sections.length / 2 ? 'Bridge' : 'Instrumental Break'
+    }
+
+    return { ...section, classifiedName: name }
+  })
+}
+
+function classifyClassicalSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  const totalDuration = analysis.duration
+
+  return sections.map((section, i) => {
+    const position = section.start / totalDuration
+    let name = ''
+
+    if (i === 0 && section.end - section.start < 60) {
+      name = 'Introduction'
+    } else if (position < 0.35) {
+      name = 'Exposition'
+    } else if (position < 0.65) {
+      name = 'Development'
+    } else if (position < 0.90) {
+      name = 'Recapitulation'
+    } else {
+      name = 'Coda'
+    }
+
+    return { ...section, classifiedName: name }
+  })
+}
+
+function classifyJazzSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  const instruments = ['Trumpet', 'Saxophone', 'Piano', 'Bass', 'Guitar', 'Drums']
+
+  return sections.map((section, i) => {
+    let name = ''
+
+    if (i === 0) {
+      name = 'Head (Theme Statement)'
+    } else if (i === sections.length - 1) {
+      name = 'Out Head (Theme Return)'
+    } else {
+      const soloNum = i - 1
+      name = `Solo Section (${instruments[soloNum % instruments.length]})`
+    }
+
+    return { ...section, classifiedName: name }
+  })
+}
+
+function classifyFolkSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  return sections.map((section, i) => {
+    let name = ''
+
+    if (i === 0) name = 'Introduction'
+    else if (i === sections.length - 1) name = 'Outro'
+    else name = i % 2 === 1 ? `Verse ${Math.floor(i / 2) + 1}` : 'Chorus/Refrain'
+
+    return { ...section, classifiedName: name }
+  })
+}
+
+function classifyHipHopSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  return sections.map((section, i) => {
+    let name = ''
+
+    if (i === 0) name = 'Intro'
+    else if (i === sections.length - 1) name = 'Outro'
+    else name = i % 2 === 1 ? `Verse ${Math.floor(i / 2) + 1}` : 'Hook/Chorus'
+
+    return { ...section, classifiedName: name }
+  })
+}
+
+function classifyElectronicSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  return sections.map((section, i) => {
+    let name = ''
+
+    if (i === 0) name = 'Intro/Build-up'
+    else if (i === sections.length - 1) name = 'Outro'
+    else name = i % 2 === 1 ? 'Build-up' : `Drop ${Math.floor(i / 2)}`
+
+    return { ...section, classifiedName: name }
+  })
+}
+
+function classifySections(sections: any[], genre: string, analysis: AudioAnalysis): ClassifiedSection[] {
+  switch (genre) {
+    case 'classical':
+      return classifyClassicalSections(sections, analysis)
+    case 'jazz':
+      return classifyJazzSections(sections, analysis)
+    case 'pop':
+    case 'rock':
+      return classifyPopSections(sections, analysis)
+    case 'folk':
+      return classifyFolkSections(sections, analysis)
+    case 'hiphop':
+      return classifyHipHopSections(sections, analysis)
+    case 'electronic':
+      return classifyElectronicSections(sections, analysis)
+    default:
+      return classifyPopSections(sections, analysis)
+  }
+}
+
+function summarizeChordProgressions(sections: ClassifiedSection[], chords: any[], key: string): ChordProgression[] {
+  // Group chords by section
+  const sectionChords = sections.map(section => {
+    // Find chords within this section's timeframe
+    const chordsInSection = chords.filter(
+      c => c.time >= section.start && c.time < section.end
+    )
+
+    if (chordsInSection.length === 0) return null
+
+    // Get unique chords in order
+    const uniqueChords: string[] = []
+    chordsInSection.forEach(c => {
+      if (uniqueChords.length === 0 || uniqueChords[uniqueChords.length - 1] !== c.chord) {
+        uniqueChords.push(c.chord)
+      }
+    })
+
+    return {
+      section: section.classifiedName,
+      chords: uniqueChords.join(' - ')
+    }
+  }).filter(Boolean) as ChordProgression[]
+
+  return sectionChords
+}
+
+function determineOverallForm(sections: ClassifiedSection[], genre: string): string {
+  const names = sections.map(s => s.classifiedName)
+
+  if (names.some(n => n.includes('Exposition'))) return 'Sonata Form'
+  if (names.some(n => n.includes('Head'))) return '32-bar AABA Form (Jazz Standard)'
+  if (names.filter(n => n.includes('Verse')).length > 0 &&
+      names.filter(n => n.includes('Chorus')).length > 0) return 'Verse-Chorus Form'
+  if (names.some(n => n.includes('Drop'))) return 'Build-Drop Form'
+  if (names.filter(n => n.includes('Verse')).length > 2) return 'Strophic Form'
+
+  return 'Standard Song Form'
+}
+
+function selectKeyMoments(sections: ClassifiedSection[], min: number, max: number): ClassifiedSection[] {
+  const moments: ClassifiedSection[] = []
+
+  // Always include intro and outro
+  moments.push(sections[0])
+  moments.push(sections[sections.length - 1])
+
+  // Add sections with type changes (interesting transitions)
+  for (let i = 1; i < sections.length - 1; i++) {
+    if (sections[i].classifiedName !== sections[i-1].classifiedName) {
+      moments.push(sections[i])
+    }
+  }
+
+  // If too many, keep most diverse
+  if (moments.length > max) {
+    // Keep intro, outro, and evenly spaced middle moments
+    const middle = moments.slice(1, -1)
+    const step = Math.floor(middle.length / (max - 2))
+    return [
+      moments[0],
+      ...middle.filter((_, i) => i % step === 0).slice(0, max - 2),
+      moments[moments.length - 1]
+    ]
+  }
+
+  // If too few, add more from middle
+  while (moments.length < min && moments.length < sections.length) {
+    const gap = Math.floor(sections.length / (moments.length + 1))
+    moments.splice(moments.length - 1, 0, sections[gap])
+  }
+
+  return moments.sort((a, b) => a.start - b.start)
+}
+
+function getWordLimit(level: string, section: string): number {
+  const limits: Record<string, Record<string, number>> = {
+    novice: { noticing: 30, significance: 30, context: 30, listenTo: 20 },
+    intermediate: { noticing: 40, significance: 40, context: 40, listenTo: 25 },
+    advanced: { noticing: 60, significance: 60, context: 60, listenTo: 30 }
+  }
+
+  return limits[level]?.[section] || 40
+}
+
+function getLevelInstructions(level: string): string {
+  const instructions: Record<string, string> = {
+    novice: `AUDIENCE: Music lovers with no formal training
+VOCABULARY: Use everyday language, avoid jargon (or explain it immediately)
+TONE: Enthusiastic and welcoming
+EXPLANATIONS: Use analogies and comparisons to familiar things
+EXAMPLE STYLE: "The trumpet sounds bright and piercing, like a beam of light cutting through fog"`,
+
+    intermediate: `AUDIENCE: Music students, engaged learners, hobbyist musicians
+VOCABULARY: Standard music terms (melody, harmony, chord, timbre) with brief inline explanations
+TONE: Educational but conversational
+EXPLANATIONS: Balance technical accuracy with accessibility
+EXAMPLE STYLE: "The piccolo trumpet (a smaller, higher trumpet) plays baroque-style ornamentation, creating timbral contrast with the pop instrumentation"`,
+
+    advanced: `AUDIENCE: Music theory students, professionals, serious analysts
+VOCABULARY: Full technical terminology without explanation
+TONE: Scholarly and precise
+EXPLANATIONS: Reference theoretical frameworks, historical practices, and analytical methods
+EXAMPLE STYLE: "The piccolo trumpet's baroque ornamentation and intervallic phrasing references Handelian trumpet writing, creating timbral stratification through spectral separation (2-4kHz emphasis vs 200-800Hz backing)"`
+  }
+
+  return instructions[level] || instructions.intermediate
+}
+
+function getExampleCommentary(level: string, genre: string): string {
+  if (genre === 'pop' && level === 'intermediate') {
+    return `EXAMPLE OF EXCELLENT COMMENTARY (for your reference):
+
+[1:29] INSTRUMENTAL SOLO (PICCOLO TRUMPET)
+
+NOTICING: Listen for the bright piccolo trumpet entering with rapid ornamental notes that cascade down the scale. Notice how its high register cuts clearly through the backing track of bass, drums, and piano.
+
+SIGNIFICANCE: This solo creates dramatic contrast by introducing a classical baroque instrument into a pop context. The trumpet's brightness shifts the sonic palette from warm to brilliant, creating a memorable signature moment.
+
+CONTEXT: Producer George Martin hired David Mason from the London Symphony Orchestra for this session. Mason's baroque-style playing references 18th-century composers, connecting 1960s pop to classical traditions - groundbreaking for 1967.
+
+LISTEN TO THIS: Beach Boys - "God Only Knows" (baroque harpsichord in pop), Procol Harum - "A Whiter Shade of Pale" (Bach-influenced organ), The Left Banke - "Walk Away Renée" (orchestral strings in rock).`
+  }
+
+  return ''
+}
+
+function buildStructureOverview(
+  sections: ClassifiedSection[],
+  analysis: AudioAnalysis,
+  chordProgressions: ChordProgression[] | null,
+  genre: string
+): string {
+  const sectionsList = sections.map(section => {
+    const start = formatTime(section.start)
+    const end = formatTime(section.end)
+    return `[${start}-${end}]  ${section.classifiedName}`
+  }).join('\n')
+
+  // Add chord progressions if available
+  let chordsSection = ''
+  if (chordProgressions && chordProgressions.length > 0) {
+    chordsSection = '\n\nCHORD PROGRESSIONS:\n' +
+      chordProgressions.map(cp => `${cp.section}: ${cp.chords}`).join('\n')
+  }
+
+  // Determine overall form
+  const form = determineOverallForm(sections, genre)
+
+  return `════════════════════════════════════════════════════
+SONG STRUCTURE
+════════════════════════════════════════════════════
+
+${sectionsList}${chordsSection}
+
+Form: ${form}
+Tempo: ${Math.round(analysis.tempo)} BPM
+Key: ${analysis.key}
+Duration: ${formatTime(analysis.duration)}
+
+════════════════════════════════════════════════════
+DETAILED ANALYSIS
+════════════════════════════════════════════════════`
+}
+
+function buildEnhancedPrompt(
+  title: string,
+  channel: string,
+  level: string,
+  genre: string,
+  sections: ClassifiedSection[],
+  analysis: AudioAnalysis,
+  chordProgressions: ChordProgression[] | null
+): string {
+  // Format structure overview
+  const structureOverview = buildStructureOverview(sections, analysis, chordProgressions, genre)
+
+  // Get level-specific instructions
+  const levelInstructions = getLevelInstructions(level)
+
+  // Get example commentary
+  const exampleCommentary = getExampleCommentary(level, genre)
+
+  // Select key moments for detailed analysis
+  const keyMoments = selectKeyMoments(sections, 4, 6)
+
+  return `You are a music educator analyzing this recording for students.
+
+SONG: "${title}" by ${channel}
+GENRE: ${genre.toUpperCase()}
+
+${structureOverview}
+
+${levelInstructions}
+
+${exampleCommentary}
+
+YOUR TASK:
+
+First, output the STRUCTURE OVERVIEW exactly as shown above (copy it verbatim).
+
+Then, generate detailed commentary for ${keyMoments.length} key moments from the structure.
+
+Choose the most musically interesting or significant moments to analyze.
+
+For each moment:
+
+[MM:SS] SECTION NAME
+
+NOTICING: (1-2 sentences)
+Direct attention to ONE specific, hearable element.
+Be concrete: name instruments, describe sound qualities, identify techniques.
+Use "Listen for..." or "Notice how..."
+
+SIGNIFICANCE: (1-2 sentences)
+Explain WHY this matters musically - cause and effect.
+How does it serve the song? What effect does it create?
+
+CONTEXT: (1-2 sentences)
+Historical, cultural, or technical background.
+Ground in verifiable facts. Compare to other works if relevant.
+
+LISTEN TO THIS: (1 sentence)
+Suggest 2-3 specific songs with SIMILAR characteristics.
+Briefly explain the connection (e.g., "similar baroque trumpet fusion").
+
+CRITICAL QUALITY RULES:
+
+1. BE SPECIFIC - reference actual musical elements you can identify
+   ❌ "The instruments play together nicely"
+   ✅ "The bass plays a descending chromatic line while the drums maintain a steady backbeat"
+
+2. NO GENERIC STATEMENTS - every sentence should teach something concrete
+   ❌ "This creates emotion"
+   ✅ "The ascending melody over static harmony creates tension and anticipation"
+
+3. GROUND IN AUDIO REALITY - don't invent production details
+   If uncertain, use "appears to," "suggests," or "characteristic of"
+
+4. MAKE CONNECTIONS - relate theory to what listener hears
+   Don't just state facts, explain their musical effect
+
+5. STAY FOCUSED - each moment should highlight ONE main point
+
+6. VERIFY SUGGESTIONS - only recommend songs that genuinely share characteristics
+
+WORD LIMITS (strictly enforce):
+- NOTICING: max ${getWordLimit(level, 'noticing')} words
+- SIGNIFICANCE: max ${getWordLimit(level, 'significance')} words
+- CONTEXT: max ${getWordLimit(level, 'context')} words
+- LISTEN TO THIS: max ${getWordLimit(level, 'listenTo')} words
+
+BEFORE FINALIZING, CHECK EACH BLOCK:
+✓ Does NOTICING describe something you can actually HEAR?
+✓ Does SIGNIFICANCE explain a musical CAUSE and EFFECT?
+✓ Does CONTEXT include a VERIFIABLE fact?
+✓ Does LISTEN TO THIS explain WHY the suggestions are similar?
+✓ Is every sentence teaching something SPECIFIC?
+
+Generate the complete analysis now (structure overview + detailed commentary):
+`
 }
 
 function buildPromptWithTimestamps(
