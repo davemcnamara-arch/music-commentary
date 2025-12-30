@@ -52,99 +52,149 @@ def write_cookies_to_netscape_file(cookies_dict: dict, filepath: str):
 
 def estimate_key_from_chroma(chroma):
     """
-    Estimate musical key from chroma features.
+    Estimate musical key using Krumhansl-Schmuckler key-finding algorithm.
     Returns format like "C major" or "A minor"
     """
     import numpy as np
 
-    # Average chroma across time
+    # Krumhansl-Schmuckler key profiles
+    # Major and minor key profiles based on empirical studies
+    major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+    minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+
+    # Average chroma across entire piece
     chroma_mean = np.mean(chroma, axis=1)
 
-    # Find the dominant pitch class
-    dominant_pitch = np.argmax(chroma_mean)
+    # Normalize
+    chroma_mean = chroma_mean / (np.sum(chroma_mean) + 1e-8)
 
-    # Pitch class names
-    pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    # Test all 24 keys (12 major + 12 minor)
+    key_names = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 
-    # Simple heuristic: check if it's major or minor
-    # Major tends to have strong 1st, 3rd (major), and 5th
-    # Minor tends to have strong 1st, 3rd (minor), and 5th
-    major_third = (dominant_pitch + 4) % 12
-    minor_third = (dominant_pitch + 3) % 12
+    best_correlation = -1
+    best_key = 'C major'
 
-    major_strength = chroma_mean[major_third]
-    minor_strength = chroma_mean[minor_third]
+    # Try major keys
+    for i in range(12):
+        # Rotate profile to match key
+        rotated_profile = np.roll(major_profile, i)
+        # Normalize profile
+        rotated_profile = rotated_profile / np.sum(rotated_profile)
+        # Calculate correlation
+        correlation = np.corrcoef(chroma_mean, rotated_profile)[0, 1]
 
-    mode = "major" if major_strength > minor_strength else "minor"
+        if correlation > best_correlation:
+            best_correlation = correlation
+            best_key = f"{key_names[i]} major"
 
-    return f"{pitch_names[dominant_pitch]} {mode}"
+    # Try minor keys
+    for i in range(12):
+        rotated_profile = np.roll(minor_profile, i)
+        rotated_profile = rotated_profile / np.sum(rotated_profile)
+        correlation = np.corrcoef(chroma_mean, rotated_profile)[0, 1]
+
+        if correlation > best_correlation:
+            best_correlation = correlation
+            best_key = f"{key_names[i]} minor"
+
+    return best_key
 
 
-def estimate_chords(y, sr):
+def detect_chord_progressions_by_section(y, sr, sections):
     """
-    Estimate chord progressions from audio.
-    Returns simplified chord progression for major sections.
+    Detect chord progressions for each section using Roman numeral analysis.
+    Returns chord progressions per section instead of individual chord timings.
     """
     import librosa
     import numpy as np
 
-    # Compute chromagram
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
-
-    # Simple chord templates (major and minor triads)
+    # Chord templates using Roman numeral analysis (relative to key)
     chord_templates = {
-        'C': [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
-        'C#': [0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
-        'D': [0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
-        'Eb': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
-        'E': [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-        'F': [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
-        'F#': [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-        'G': [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-        'Ab': [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
-        'A': [0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
-        'Bb': [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0],
-        'B': [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1],
-        # Minor chords
-        'Cm': [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
-        'Dm': [0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0],
-        'Em': [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
-        'Fm': [1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
-        'Gm': [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0],
-        'Am': [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0],
-        'Bm': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+        'I': [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],     # Major tonic
+        'ii': [0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0],    # Minor 2nd
+        'iii': [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],   # Minor 3rd
+        'IV': [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],    # Major 4th
+        'V': [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],     # Major 5th
+        'vi': [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0],    # Minor 6th
+        'viio': [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],  # Diminished 7th
     }
 
-    # Detect chords over time
-    chord_sequence = []
-    hop_length = 512
+    section_progressions = []
 
-    for i in range(0, chroma.shape[1], 100):  # Every ~2 seconds
-        if i + 100 > chroma.shape[1]:
-            break
+    for section in sections:
+        # Get audio segment for this section
+        start_sample = int(section['start'] * sr)
+        end_sample = int(section['end'] * sr)
 
-        # Average chroma over this segment
-        segment_chroma = np.mean(chroma[:, i:i+100], axis=1)
+        if end_sample > len(y):
+            end_sample = len(y)
 
-        # Find best matching chord
-        best_match = None
-        best_score = -1
-
-        for chord_name, template in chord_templates.items():
-            score = np.dot(segment_chroma, template)
-            if score > best_score:
-                best_score = score
-                best_match = chord_name
-
-        # Only add if different from previous
-        if not chord_sequence or chord_sequence[-1]['chord'] != best_match:
-            timestamp = librosa.frames_to_time(i, sr=sr, hop_length=hop_length)
-            chord_sequence.append({
-                'time': float(timestamp),
-                'chord': best_match
+        if start_sample >= end_sample:
+            section_progressions.append({
+                'section': section.get('type', 'Section'),
+                'progression': 'N/A'
             })
+            continue
 
-    return chord_sequence
+        y_section = y[start_sample:end_sample]
+
+        # Compute chroma for this section
+        chroma = librosa.feature.chroma_cqt(y=y_section, sr=sr)
+
+        if chroma.shape[1] < 4:
+            section_progressions.append({
+                'section': section.get('type', 'Section'),
+                'progression': 'N/A'
+            })
+            continue
+
+        # Divide section into 4-8 chord regions
+        section_duration = section['end'] - section['start']
+        num_chords = max(4, min(8, int(section_duration / 4)))
+        frames_per_chord = max(1, chroma.shape[1] // num_chords)
+
+        progression = []
+
+        for i in range(num_chords):
+            start_frame = i * frames_per_chord
+            end_frame = min((i + 1) * frames_per_chord, chroma.shape[1])
+
+            if start_frame >= end_frame:
+                break
+
+            # Average chroma for this chord region
+            chord_chroma = np.mean(chroma[:, start_frame:end_frame], axis=1)
+
+            # Normalize
+            chord_chroma = chord_chroma / (np.sum(chord_chroma) + 1e-8)
+
+            # Find best matching chord
+            best_chord = 'I'
+            best_score = -1
+
+            for chord_name, template in chord_templates.items():
+                template_normalized = np.array(template) / (np.sum(template) + 1e-8)
+                score = np.dot(chord_chroma, template_normalized)
+                if score > best_score:
+                    best_score = score
+                    best_chord = chord_name
+
+            # Only add if different from previous chord
+            if not progression or progression[-1] != best_chord:
+                progression.append(best_chord)
+
+        # Format as string (limit to reasonable length)
+        if len(progression) > 0:
+            progression_str = ' - '.join(progression[:8])  # Max 8 chords shown
+        else:
+            progression_str = 'N/A'
+
+        section_progressions.append({
+            'section': section.get('type', 'Section'),
+            'progression': progression_str
+        })
+
+    return section_progressions
 
 
 @app.function(
@@ -244,65 +294,73 @@ def analyze_youtube_audio(youtube_url: str, cookies: dict) -> dict:
         print(f"Estimated key: {estimated_key}")
 
         # Segment the song into sections using MFCC features
+        # CRITICAL FIX: Use larger hop length and enforce minimum section length
         print("Detecting musical sections...")
-        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
 
-        # Use agglomerative clustering to find section boundaries
-        # Limit to reasonable number of sections (4-8 typically)
-        n_sections = min(6, max(4, int(duration / 30)))  # ~30 seconds per section as estimate
+        # Use larger hop length for broader sections (fewer, more significant boundaries)
+        hop_length = 4096  # Larger hop = fewer, bigger sections
+
+        # Compute MFCC features at lower resolution
+        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, hop_length=hop_length)
+
+        # For a 3-minute song, aim for 6-8 sections (~30 seconds per section)
+        target_sections = max(6, min(8, int(duration / 30)))
 
         try:
-            from scipy.cluster.hierarchy import fcluster, linkage
-            from scipy.spatial.distance import pdist
+            # Use librosa's agglomerative segmentation
+            boundaries_frames = librosa.segment.agglomerative(mfcc, k=target_sections)
 
-            # Compute self-similarity matrix
-            mfcc_normalized = (mfcc - np.mean(mfcc, axis=1, keepdims=True)) / (np.std(mfcc, axis=1, keepdims=True) + 1e-8)
+            # Convert frames to time
+            boundary_times = librosa.frames_to_time(
+                boundaries_frames,
+                sr=sr,
+                hop_length=hop_length
+            )
 
-            # Use beat-synchronous features for better segmentation
-            beat_mfcc = librosa.util.sync(mfcc_normalized, beat_frames)
+            # CRITICAL: Merge sections that are too short (< 8 seconds minimum)
+            merged_boundaries = [float(boundary_times[0])]
+            for i in range(1, len(boundary_times)):
+                if boundary_times[i] - merged_boundaries[-1] >= 8.0:
+                    merged_boundaries.append(float(boundary_times[i]))
 
-            # Compute distances between beat frames
-            distances = pdist(beat_mfcc.T, metric='euclidean')
-            linkage_matrix = linkage(distances, method='average')
+            # Ensure we have the end boundary
+            if merged_boundaries[-1] < duration - 1.0:
+                merged_boundaries.append(float(duration))
 
-            # Cut the dendrogram to get segments
-            segments = fcluster(linkage_matrix, n_sections, criterion='maxclust')
+            section_boundaries = merged_boundaries
 
-            # Convert segment labels to section boundaries
-            section_boundaries = [0.0]  # Start
-            for i in range(1, len(segments)):
-                if segments[i] != segments[i-1]:
-                    boundary_time = beat_times[i] if i < len(beat_times) else duration
-                    section_boundaries.append(float(boundary_time))
-            section_boundaries.append(float(duration))  # End
-
-            # Remove duplicates and sort
-            section_boundaries = sorted(list(set(section_boundaries)))
+            print(f"Initial boundaries: {len(boundary_times)}, after merging: {len(section_boundaries)}")
 
         except Exception as e:
             print(f"Section detection failed, using simple time-based sections: {e}")
-            # Fallback: simple time-based sections
-            section_length = duration / n_sections
-            section_boundaries = [float(i * section_length) for i in range(n_sections + 1)]
+            import traceback
+            traceback.print_exc()
 
-        # Create section objects with types
+            # Fallback: simple time-based sections with minimum length
+            section_length = max(15.0, duration / target_sections)  # At least 15 seconds per section
+            num_sections = int(duration / section_length)
+            section_boundaries = [float(i * section_length) for i in range(num_sections + 1)]
+            if section_boundaries[-1] < duration:
+                section_boundaries.append(float(duration))
+
+        # Create section objects with intelligent type assignment
         section_types = ["intro", "verse", "chorus", "verse", "bridge", "chorus", "outro"]
         sections = []
 
         for i in range(len(section_boundaries) - 1):
-            section_type = section_types[i % len(section_types)]
+            section_type = section_types[min(i, len(section_types) - 1)]
             sections.append({
                 "start": round(section_boundaries[i], 2),
                 "end": round(section_boundaries[i + 1], 2),
                 "type": section_type
             })
 
-        print(f"Detected {len(sections)} sections")
+        print(f"Detected {len(sections)} sections (target was {target_sections})")
 
-        # Chord progression detection
-        print("Detecting chords...")
-        chords = estimate_chords(y, sr)
-        print(f"Detected {len(chords)} chord changes")
+        # Chord progression detection by section (not individual chords)
+        print("Detecting chord progressions by section...")
+        chord_progressions = detect_chord_progressions_by_section(y, sr, sections)
+        print(f"Detected chord progressions for {len(chord_progressions)} sections")
 
         # Build result
         result = {
@@ -311,7 +369,7 @@ def analyze_youtube_audio(youtube_url: str, cookies: dict) -> dict:
             "key": estimated_key,
             "beats": [round(float(t), 2) for t in beat_times.tolist()],
             "sections": sections,
-            "chords": chords
+            "chord_progressions": chord_progressions  # Not individual chords
         }
 
         print("Analysis complete!")
