@@ -326,33 +326,33 @@ function detectGenre(title: string, channel: string): string {
   const text = `${title} ${channel}`.toLowerCase()
 
   // Classical
-  if (text.match(/symphony|concerto|sonata|quartet|bach|beethoven|mozart|chopin|brahms|tchaikovsky|classical/i)) {
+  if (text.match(/\b(symphony|concerto|sonata|quartet|bach|beethoven|mozart|chopin|brahms|tchaikovsky|classical)\b/i)) {
     return 'classical'
   }
 
   // Jazz
-  if (text.match(/jazz|bebop|swing|miles davis|coltrane|monk|mingus|trio|quartet|standards/i)) {
+  if (text.match(/\b(jazz|bebop|swing|coltrane|monk|mingus|standards)\b|miles davis/i)) {
     return 'jazz'
   }
 
-  // Folk
-  if (text.match(/folk|traditional|ballad|acoustic|singer.songwriter/i)) {
-    return 'folk'
+  // Rock (check before Beatles/beat issue)
+  if (text.match(/\b(beatles|rock|metal|punk|grunge|alternative|rolling stones|led zeppelin)\b/i)) {
+    return 'rock'
   }
 
-  // Hip-hop
-  if (text.match(/rap|hip.?hop|beat|freestyle|mc |dj |trap|drill/i)) {
+  // Hip-hop (use word boundaries to avoid matching "beatles")
+  if (text.match(/\b(rap|hiphop|hip-hop|freestyle|trap|drill)\b|\bbeat\b(?!les)/i)) {
     return 'hiphop'
   }
 
   // Electronic
-  if (text.match(/edm|techno|house|electronic|synth|dnb|dubstep|trance/i)) {
+  if (text.match(/\b(edm|techno|house|electronic|synth|dnb|dubstep|trance)\b/i)) {
     return 'electronic'
   }
 
-  // Rock
-  if (text.match(/rock|metal|punk|grunge|alternative/i)) {
-    return 'rock'
+  // Folk
+  if (text.match(/\b(folk|traditional|ballad|acoustic)\b|singer.songwriter/i)) {
+    return 'folk'
   }
 
   // Default to pop
