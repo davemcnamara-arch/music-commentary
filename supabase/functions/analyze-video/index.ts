@@ -1,8 +1,10 @@
 // Supabase Edge Function for Music Commentary with Audio Analysis
 // Uses Modal for audio analysis, then OpenAI for generating commentary
+// Enhanced with web-sourced metadata for improved accuracy
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { fetchWebMetadata, compareWithAudioAnalysis, type WebMusicMetadata } from './web-metadata-fetcher.ts'
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
@@ -217,9 +219,99 @@ serve(async (req) => {
       }
     }
 
-    // 4. Detect genre and classify sections
+    // 4. Fetch web-sourced metadata for verification
+    console.log('Fetching web metadata for verification...')
+    let webMetadata: WebMusicMetadata | null = null
+
+    // Check web metadata cache first
+    const { data: cachedWebData, error: webCacheError } = await supabase
+      .from('web_metadata_cache')
+      .select('*')
+      .eq('video_id', videoId)
+      .single()
+
+    if (cachedWebData && !webCacheError) {
+      console.log('Found cached web metadata!')
+      webMetadata = {
+        sources: cachedWebData.sources || [],
+        confidence: cachedWebData.confidence || 'none',
+        artist: cachedWebData.artist,
+        title: cachedWebData.title,
+        duration: cachedWebData.duration,
+        releaseYear: cachedWebData.release_year,
+        genre: cachedWebData.genre,
+        genreTags: cachedWebData.genre_tags,
+        key: cachedWebData.key,
+        tempo: cachedWebData.tempo,
+        mood: cachedWebData.mood,
+        style: cachedWebData.style,
+        hasChorus: cachedWebData.has_chorus,
+        hasBridge: cachedWebData.has_bridge,
+        hasIntro: cachedWebData.has_intro,
+        instrumentalSections: cachedWebData.instrumental_sections,
+        rawData: {
+          musicbrainz: cachedWebData.raw_musicbrainz_data,
+          theaudiodb: cachedWebData.raw_theaudiodb_data
+        }
+      }
+    } else {
+      // No cache - fetch from web sources
+      console.log('No web metadata cache found, fetching from sources...')
+      try {
+        webMetadata = await fetchWebMetadata(channelName, videoTitle)
+
+        // Cache the web metadata if we found any
+        if (webMetadata && webMetadata.confidence !== 'none') {
+          console.log('Caching web metadata...')
+          const { error: insertError } = await supabase
+            .from('web_metadata_cache')
+            .insert({
+              video_id: videoId,
+              sources: webMetadata.sources,
+              confidence: webMetadata.confidence,
+              artist: webMetadata.artist,
+              title: webMetadata.title,
+              duration: webMetadata.duration,
+              release_year: webMetadata.releaseYear,
+              genre: webMetadata.genre,
+              genre_tags: webMetadata.genreTags,
+              key: webMetadata.key,
+              tempo: webMetadata.tempo,
+              mood: webMetadata.mood,
+              style: webMetadata.style,
+              has_chorus: webMetadata.hasChorus,
+              has_bridge: webMetadata.hasBridge,
+              has_intro: webMetadata.hasIntro,
+              instrumental_sections: webMetadata.instrumentalSections,
+              raw_musicbrainz_data: webMetadata.rawData?.musicbrainz,
+              raw_theaudiodb_data: webMetadata.rawData?.theaudiodb
+            })
+
+          if (insertError) {
+            console.error('Error caching web metadata:', insertError)
+          } else {
+            console.log('Web metadata cached successfully')
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching web metadata:', error)
+        // Don't fail the request, just proceed without web metadata
+      }
+    }
+
+    // Compare web metadata with audio analysis
+    let comparison: any = null
+    if (webMetadata && webMetadata.confidence !== 'none') {
+      comparison = compareWithAudioAnalysis(webMetadata, audioAnalysis)
+      if (comparison.suggestions.length > 0) {
+        console.log('Web metadata suggestions:')
+        comparison.suggestions.forEach((s: string) => console.log(`  - ${s}`))
+      }
+    }
+
+    // 5. Detect genre and classify sections (enhanced with web metadata)
     console.log('Detecting genre and classifying sections...')
-    const genre = detectGenre(videoTitle, channelName)
+    const genre = detectGenreEnhanced(videoTitle, channelName, webMetadata)
     const classifiedSections = classifySections(audioAnalysis.sections, genre, audioAnalysis)
 
     // 5. Use chord progressions from Modal (already analyzed by section)
@@ -229,7 +321,7 @@ serve(async (req) => {
       chordProgressions = audioAnalysis.chord_progressions
     }
 
-    // 6. Build enhanced prompt
+    // 6. Build enhanced prompt (with web metadata)
     console.log('Building enhanced prompt...')
     const prompt = buildEnhancedPrompt(
       videoTitle,
@@ -238,7 +330,8 @@ serve(async (req) => {
       genre,
       classifiedSections,
       audioAnalysis,
-      chordProgressions
+      chordProgressions,
+      webMetadata
     )
 
     // 7. Call OpenAI to generate commentary
@@ -281,7 +374,7 @@ serve(async (req) => {
 
     console.log('Successfully generated commentary')
 
-    // Return the commentary
+    // Return the commentary with web metadata confidence indicators
     return new Response(
       JSON.stringify({
         success: true,
@@ -293,6 +386,21 @@ serve(async (req) => {
           tempo: audioAnalysis.tempo,
           key: audioAnalysis.key,
           sectionCount: audioAnalysis.sections.length
+        },
+        webMetadata: webMetadata && webMetadata.confidence !== 'none' ? {
+          confidence: webMetadata.confidence,
+          sources: webMetadata.sources,
+          genre: webMetadata.genre,
+          key: webMetadata.key,
+          tempo: webMetadata.tempo,
+          verified: true
+        } : null,
+        dataQuality: {
+          audioAnalysisSource: audioAnalysis ? 'Modal (librosa)' : 'unavailable',
+          webMetadataConfidence: webMetadata?.confidence || 'none',
+          recommendedKey: webMetadata?.key || audioAnalysis.key,
+          recommendedTempo: webMetadata?.tempo || audioAnalysis.tempo,
+          recommendedGenre: genre
         },
         generatedAt: new Date().toISOString(),
       }),
@@ -358,6 +466,39 @@ function detectGenre(title: string, channel: string): string {
 
   // Default to pop
   return 'pop'
+}
+
+/**
+ * Enhanced genre detection that prioritizes web-sourced metadata
+ * Falls back to title-based detection if web metadata unavailable
+ */
+function detectGenreEnhanced(
+  title: string,
+  channel: string,
+  webMetadata: WebMusicMetadata | null
+): string {
+  // Priority 1: Use web metadata if high or medium confidence
+  if (webMetadata && webMetadata.confidence !== 'none' && webMetadata.genre) {
+    console.log(`Using web-sourced genre: ${webMetadata.genre} (confidence: ${webMetadata.confidence})`)
+
+    // Normalize genre to our categories
+    const genreLower = webMetadata.genre.toLowerCase()
+
+    if (genreLower.includes('classical') || genreLower.includes('orchestra')) return 'classical'
+    if (genreLower.includes('jazz')) return 'jazz'
+    if (genreLower.includes('rock') || genreLower.includes('metal') || genreLower.includes('punk')) return 'rock'
+    if (genreLower.includes('hip') || genreLower.includes('rap')) return 'hiphop'
+    if (genreLower.includes('electronic') || genreLower.includes('edm') || genreLower.includes('techno') || genreLower.includes('house')) return 'electronic'
+    if (genreLower.includes('folk') || genreLower.includes('acoustic')) return 'folk'
+    if (genreLower.includes('pop')) return 'pop'
+
+    // If no direct match, use web genre as-is (GPT-4o can handle it)
+    return webMetadata.genre
+  }
+
+  // Priority 2: Fall back to title-based detection
+  console.log('No web metadata available, using title-based genre detection')
+  return detectGenre(title, channel)
 }
 
 function classifyPopSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
@@ -643,7 +784,8 @@ function buildStructureOverview(
   sections: ClassifiedSection[],
   analysis: AudioAnalysis,
   chordProgressions: ChordProgression[] | null,
-  genre: string
+  genre: string,
+  webMetadata: WebMusicMetadata | null
 ): string {
   const sectionsList = sections.map(section => {
     const start = formatTime(section.start)
@@ -674,15 +816,40 @@ function buildStructureOverview(
   // Determine overall form
   const form = determineOverallForm(sections, genre)
 
+  // Add web metadata section if available
+  let webMetadataSection = ''
+  if (webMetadata && webMetadata.confidence !== 'none') {
+    const dataSource = webMetadata.sources.join(', ')
+    const confidenceBadge = webMetadata.confidence === 'high' ? '✓ HIGH CONFIDENCE' :
+                            webMetadata.confidence === 'medium' ? '~ MEDIUM CONFIDENCE' :
+                            '⚠ LOW CONFIDENCE'
+
+    webMetadataSection = `\n\nVERIFIED WEB METADATA (${confidenceBadge}):\n`
+    webMetadataSection += `Sources: ${dataSource}\n`
+
+    if (webMetadata.genre) webMetadataSection += `Genre: ${webMetadata.genre}\n`
+    if (webMetadata.style) webMetadataSection += `Style: ${webMetadata.style}\n`
+    if (webMetadata.mood) webMetadataSection += `Mood: ${webMetadata.mood}\n`
+    if (webMetadata.key && webMetadata.key !== analysis.key) {
+      webMetadataSection += `Key (verified): ${webMetadata.key} (audio detected: ${analysis.key})\n`
+    }
+    if (webMetadata.tempo && Math.abs(webMetadata.tempo - analysis.tempo) > 5) {
+      webMetadataSection += `Tempo (verified): ${webMetadata.tempo} BPM (audio detected: ${Math.round(analysis.tempo)} BPM)\n`
+    }
+    if (webMetadata.releaseYear) {
+      webMetadataSection += `Release Year: ${webMetadata.releaseYear}\n`
+    }
+  }
+
   return `════════════════════════════════════════════════════
 SONG STRUCTURE
 ════════════════════════════════════════════════════
 
-${sectionsList}${chordsSection}
+${sectionsList}${chordsSection}${webMetadataSection}
 
 Form: ${form}
-Tempo: ${Math.round(analysis.tempo)} BPM
-Key: ${analysis.key}
+Tempo: ${Math.round(analysis.tempo)} BPM${webMetadata?.tempo && Math.abs(webMetadata.tempo - analysis.tempo) <= 5 ? ' (verified)' : ''}
+Key: ${analysis.key}${webMetadata?.key === analysis.key ? ' (verified)' : ''}
 Duration: ${formatTime(analysis.duration)}
 
 ════════════════════════════════════════════════════
@@ -697,10 +864,11 @@ function buildEnhancedPrompt(
   genre: string,
   sections: ClassifiedSection[],
   analysis: AudioAnalysis,
-  chordProgressions: ChordProgression[] | null
+  chordProgressions: ChordProgression[] | null,
+  webMetadata: WebMusicMetadata | null
 ): string {
   // Format structure overview
-  const structureOverview = buildStructureOverview(sections, analysis, chordProgressions, genre)
+  const structureOverview = buildStructureOverview(sections, analysis, chordProgressions, genre, webMetadata)
 
   // Get level-specific instructions
   const levelInstructions = getLevelInstructions(level)
@@ -731,6 +899,20 @@ The structure analysis is algorithmic and may not be perfect. Use your musical k
 4. If a section seems wrong (e.g., "Verse 10"), identify what it actually is based on the music
 
 For well-known songs, use your knowledge of the actual structure as a guide. The detected timestamps are a STARTING POINT - correct obvious errors based on musical reality.
+
+${webMetadata && webMetadata.confidence !== 'none' ? `
+VERIFIED WEB METADATA AVAILABLE:
+The analysis includes verified metadata from ${webMetadata.sources.join(' and ')} with ${webMetadata.confidence} confidence.
+${webMetadata.key ? `- The song's key is verified as ${webMetadata.key}${webMetadata.key !== analysis.key ? ` (audio analysis detected ${analysis.key}, which may be due to tuning variations or modulations)` : ''}` : ''}
+${webMetadata.tempo ? `- The tempo is verified as ${webMetadata.tempo} BPM${Math.abs(webMetadata.tempo - analysis.tempo) > 5 ? ` (audio detected ${Math.round(analysis.tempo)} BPM - use the verified tempo)` : ''}` : ''}
+${webMetadata.genre ? `- Genre confirmed as ${webMetadata.genre}${webMetadata.genreTags && webMetadata.genreTags.length > 0 ? ` (also tagged: ${webMetadata.genreTags.join(', ')})` : ''}` : ''}
+${webMetadata.mood ? `- Mood: ${webMetadata.mood}` : ''}
+${webMetadata.style ? `- Musical style: ${webMetadata.style}` : ''}
+
+Use this verified information to enhance accuracy. When web metadata conflicts with audio analysis, trust the web metadata for well-known recordings (audio analysis can be affected by compression, tuning, or performance variations).
+` : `
+NOTE: No verified web metadata available for this recording. Audio analysis results may be less accurate for obscure or live recordings.
+`}
 
 YOUR TASK:
 
