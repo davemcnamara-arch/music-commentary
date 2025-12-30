@@ -12,7 +12,7 @@ const CONFIG = {
   // SUPABASE_FUNCTION_URL: 'http://localhost:54321/functions/v1/analyze-video',
 
   // Timeout for API requests (in milliseconds)
-  API_TIMEOUT: 60000, // 60 seconds
+  API_TIMEOUT: 120000, // 120 seconds (2 minutes) - increased for GPT-4o
 
   // Enable debug logging
   DEBUG: true,
