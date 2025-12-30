@@ -33,9 +33,9 @@ interface AudioAnalysis {
     end: number
     type: string
   }>
-  chords?: Array<{
-    time: number
-    chord: string
+  chord_progressions?: Array<{
+    section: string
+    progression: string
   }>
 }
 
@@ -48,7 +48,7 @@ interface ClassifiedSection {
 
 interface ChordProgression {
   section: string
-  chords: string
+  progression: string
 }
 
 interface OpenAIResponse {
@@ -134,7 +134,8 @@ serve(async (req) => {
         tempo: cachedData.tempo,
         key: cachedData.key,
         beats: cachedData.beats,
-        sections: cachedData.sections
+        sections: cachedData.sections,
+        chord_progressions: cachedData.chord_progressions
       }
     } else {
       // 2. No cache - call Modal for audio analysis
@@ -199,9 +200,9 @@ serve(async (req) => {
         sections: audioAnalysis.sections,
       }
 
-      // Add chords if available
-      if (audioAnalysis.chords) {
-        cacheData.chords = audioAnalysis.chords
+      // Add chord progressions if available
+      if (audioAnalysis.chord_progressions) {
+        cacheData.chord_progressions = audioAnalysis.chord_progressions
       }
 
       const { error: insertError } = await supabase
@@ -221,11 +222,11 @@ serve(async (req) => {
     const genre = detectGenre(videoTitle, channelName)
     const classifiedSections = classifySections(audioAnalysis.sections, genre, audioAnalysis)
 
-    // 5. Summarize chord progressions (for pop/jazz/rock)
+    // 5. Use chord progressions from Modal (already analyzed by section)
     let chordProgressions: ChordProgression[] | null = null
-    if (['pop', 'jazz', 'rock', 'folk'].includes(genre) && audioAnalysis.chords) {
-      console.log('Summarizing chord progressions...')
-      chordProgressions = summarizeChordProgressions(classifiedSections, audioAnalysis.chords, audioAnalysis.key)
+    if (audioAnalysis.chord_progressions && audioAnalysis.chord_progressions.length > 0) {
+      console.log('Using chord progressions from audio analysis...')
+      chordProgressions = audioAnalysis.chord_progressions
     }
 
     // 6. Build enhanced prompt
@@ -360,20 +361,53 @@ function detectGenre(title: string, channel: string): string {
 }
 
 function classifyPopSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
+  // Improved classification for 6-8 section songs
+  // Pattern: Intro - Verse - Verse - Chorus - Verse - Chorus - Solo/Bridge - Verse - Chorus - Outro
+
   return sections.map((section, i) => {
     let name = ''
+    const totalSections = sections.length
 
+    // First section: Introduction (if short, < 15 seconds)
     if (i === 0) {
-      name = 'Introduction'
-    } else if (i === sections.length - 1) {
-      name = 'Outro'
-    } else {
-      // Verse-chorus pattern
-      const position = (i - 1) % 4
-      if (position === 0) name = `Verse ${Math.floor((i - 1) / 4) + 1}`
-      else if (position === 1) name = 'Pre-Chorus'
-      else if (position === 2) name = 'Chorus'
-      else name = i > sections.length / 2 ? 'Bridge' : 'Instrumental Break'
+      if (section.end - section.start < 15) {
+        name = 'Introduction'
+      } else {
+        name = 'Verse 1'  // Long first section is probably verse
+      }
+    }
+    // Last section: Outro or Final Chorus
+    else if (i === totalSections - 1) {
+      if (section.end - section.start > 30) {
+        name = 'Final Chorus + Outro'
+      } else {
+        name = 'Outro'
+      }
+    }
+    // Middle sections: intelligent pattern based on position
+    else {
+      const position = i / (totalSections - 1)  // 0 to 1
+
+      if (position < 0.3) {
+        // Early sections (0-30%): verses
+        name = `Verse ${i}`
+      } else if (position >= 0.3 && position < 0.45) {
+        // First chorus appears around 30-45% through
+        name = 'Chorus'
+      } else if (position >= 0.45 && position < 0.6) {
+        // Middle section (45-60%): verse or instrumental
+        if (section.end - section.start > 20) {
+          name = 'Instrumental Solo'  // Longer section = solo
+        } else {
+          name = `Verse ${Math.floor(i * 0.6)}`
+        }
+      } else if (position >= 0.6 && position < 0.85) {
+        // Later sections (60-85%): alternating verse/chorus
+        name = position < 0.7 ? `Verse ${Math.floor(i * 0.5)}` : 'Chorus'
+      } else {
+        // Final sections before outro (85-95%): final chorus or bridge
+        name = position < 0.95 ? 'Final Chorus' : 'Bridge/Coda'
+      }
     }
 
     return { ...section, classifiedName: name }
@@ -617,11 +651,24 @@ function buildStructureOverview(
     return `[${start}-${end}]  ${section.classifiedName}`
   }).join('\n')
 
-  // Add chord progressions if available
+  // Only show chord progressions if they look reasonable
   let chordsSection = ''
   if (chordProgressions && chordProgressions.length > 0) {
-    chordsSection = '\n\nCHORD PROGRESSIONS:\n' +
-      chordProgressions.map(cp => `${cp.section}: ${cp.chords}`).join('\n')
+    // Filter out nonsensical progressions
+    const validProgressions = chordProgressions.filter(cp => {
+      return cp.progression &&
+             cp.progression !== 'N/A' &&
+             cp.progression.split(' - ').length >= 2 &&  // At least 2 chords
+             cp.progression.split(' - ').length <= 8     // Not more than 8
+    })
+
+    if (validProgressions.length > 0) {
+      chordsSection = '\n\nCHORD PROGRESSIONS (Roman numeral analysis):\n' +
+        validProgressions
+          .filter(cp => !cp.section.toLowerCase().includes('introduction'))  // Skip intro
+          .map(cp => `${cp.section}: ${cp.progression}`)
+          .join('\n')
+    }
   }
 
   // Determine overall form
@@ -674,6 +721,16 @@ ${structureOverview}
 ${levelInstructions}
 
 ${exampleCommentary}
+
+CRITICAL CONSTRAINT - VERIFY SECTION STRUCTURE:
+The structure analysis is algorithmic and may not be perfect. Use your musical knowledge to:
+
+1. Verify section names make sense (most pop songs don't have 12 verses)
+2. Adjust timestamps if they seem off by a few seconds
+3. Focus commentary on the ACTUAL musical moments you know exist in this song
+4. If a section seems wrong (e.g., "Verse 10"), identify what it actually is based on the music
+
+For well-known songs, use your knowledge of the actual structure as a guide. The detected timestamps are a STARTING POINT - correct obvious errors based on musical reality.
 
 YOUR TASK:
 
