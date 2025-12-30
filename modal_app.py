@@ -80,6 +80,73 @@ def estimate_key_from_chroma(chroma):
     return f"{pitch_names[dominant_pitch]} {mode}"
 
 
+def estimate_chords(y, sr):
+    """
+    Estimate chord progressions from audio.
+    Returns simplified chord progression for major sections.
+    """
+    import librosa
+    import numpy as np
+
+    # Compute chromagram
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+
+    # Simple chord templates (major and minor triads)
+    chord_templates = {
+        'C': [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+        'C#': [0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+        'D': [0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+        'Eb': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+        'E': [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
+        'F': [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+        'F#': [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+        'G': [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+        'Ab': [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+        'A': [0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+        'Bb': [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0],
+        'B': [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+        # Minor chords
+        'Cm': [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+        'Dm': [0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+        'Em': [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        'Fm': [1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+        'Gm': [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0],
+        'Am': [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+        'Bm': [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+    }
+
+    # Detect chords over time
+    chord_sequence = []
+    hop_length = 512
+
+    for i in range(0, chroma.shape[1], 100):  # Every ~2 seconds
+        if i + 100 > chroma.shape[1]:
+            break
+
+        # Average chroma over this segment
+        segment_chroma = np.mean(chroma[:, i:i+100], axis=1)
+
+        # Find best matching chord
+        best_match = None
+        best_score = -1
+
+        for chord_name, template in chord_templates.items():
+            score = np.dot(segment_chroma, template)
+            if score > best_score:
+                best_score = score
+                best_match = chord_name
+
+        # Only add if different from previous
+        if not chord_sequence or chord_sequence[-1]['chord'] != best_match:
+            timestamp = librosa.frames_to_time(i, sr=sr, hop_length=hop_length)
+            chord_sequence.append({
+                'time': float(timestamp),
+                'chord': best_match
+            })
+
+    return chord_sequence
+
+
 @app.function(
     image=image,
     timeout=300,  # 5 minute timeout
@@ -232,13 +299,19 @@ def analyze_youtube_audio(youtube_url: str, cookies: dict) -> dict:
 
         print(f"Detected {len(sections)} sections")
 
+        # Chord progression detection
+        print("Detecting chords...")
+        chords = estimate_chords(y, sr)
+        print(f"Detected {len(chords)} chord changes")
+
         # Build result
         result = {
             "duration": round(duration, 2),
             "tempo": round(tempo, 1),
             "key": estimated_key,
             "beats": [round(float(t), 2) for t in beat_times.tolist()],
-            "sections": sections
+            "sections": sections,
+            "chords": chords
         }
 
         print("Analysis complete!")
@@ -246,7 +319,7 @@ def analyze_youtube_audio(youtube_url: str, cookies: dict) -> dict:
 
 
 @app.function(image=image)
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 def analyze_endpoint(data: dict) -> dict:
     """
     Web endpoint for audio analysis.
