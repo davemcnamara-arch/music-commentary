@@ -4,12 +4,16 @@
  * Fetches verified music data from multiple web sources:
  * - MusicBrainz: Open music encyclopedia (free, no key)
  * - TheAudioDB: Music metadata database (free tier)
+ * - Ultimate Guitar: Real chord progressions from tabs (respectful scraping)
  *
  * Provides ground truth for:
  * - Genre, key, tempo (when available)
  * - Song structure hints
+ * - Real chord progressions (not template-matched)
  * - Confidence scoring
  */
+
+import { fetchUltimateGuitarChords, type UltimateGuitarTab } from './ultimate-guitar-fetcher.ts'
 
 export interface WebMusicMetadata {
   // Source information
@@ -36,10 +40,14 @@ export interface WebMusicMetadata {
   hasIntro?: boolean
   instrumentalSections?: boolean
 
+  // Ultimate Guitar chord data
+  ultimateGuitarTab?: UltimateGuitarTab
+
   // Raw data for debugging
   rawData?: {
     musicbrainz?: any
     theaudiodb?: any
+    ultimateguitar?: any
   }
 }
 
@@ -302,10 +310,19 @@ function extractGenreFromTags(tags?: Array<{ name: string, count: number }>): {
  */
 function calculateConfidence(
   mbData: MusicBrainzRecording | null,
-  tadbData: TheAudioDBTrack | null
+  tadbData: TheAudioDBTrack | null,
+  ugData: UltimateGuitarTab | null
 ): 'high' | 'medium' | 'low' | 'none' {
-  if (mbData && tadbData) return 'high'
-  if (mbData || tadbData) return 'medium'
+  const sourceCount = [mbData, tadbData, ugData].filter(Boolean).length
+
+  // High confidence: 3 sources OR 2+ sources with chord data
+  if (sourceCount >= 3) return 'high'
+  if (sourceCount >= 2 && ugData) return 'high'
+  if (sourceCount >= 2) return 'high'
+
+  // Medium confidence: 1 source
+  if (sourceCount === 1) return 'medium'
+
   return 'none'
 }
 
@@ -321,17 +338,22 @@ export async function fetchWebMetadata(
   console.log(`Title: ${title}`)
 
   // Fetch from multiple sources in parallel
-  const [mbData, tadbData] = await Promise.all([
+  const [mbData, tadbData, ugData] = await Promise.all([
     fetchMusicBrainzData(artist, title),
-    fetchTheAudioDBData(artist, title)
+    fetchTheAudioDBData(artist, title),
+    fetchUltimateGuitarChords(artist, title).catch(err => {
+      console.error('Ultimate Guitar fetch failed (non-fatal):', err)
+      return null
+    })
   ])
 
   // Determine confidence
-  const confidence = calculateConfidence(mbData, tadbData)
+  const confidence = calculateConfidence(mbData, tadbData, ugData)
   const sources: string[] = []
 
   if (mbData) sources.push('MusicBrainz')
   if (tadbData) sources.push('TheAudioDB')
+  if (ugData) sources.push('Ultimate Guitar')
 
   console.log(`Confidence: ${confidence} (sources: ${sources.join(', ') || 'none'})`)
 
@@ -381,15 +403,24 @@ export async function fetchWebMetadata(
     if (tadbData.strMood) metadata.mood = tadbData.strMood
   }
 
+  // Ultimate Guitar chord data
+  if (ugData) {
+    metadata.ultimateGuitarTab = ugData
+    console.log(`Ultimate Guitar: Found ${ugData.chords.length} chords across ${ugData.sections.length} sections`)
+    console.log(`Tab quality: ${ugData.rating}/5 (${ugData.votes} votes)`)
+  }
+
   // Store raw data for debugging
   metadata.rawData = {
     musicbrainz: mbData || undefined,
-    theaudiodb: tadbData || undefined
+    theaudiodb: tadbData || undefined,
+    ultimateguitar: ugData || undefined
   }
 
   console.log(`=== Web Metadata Retrieved ===`)
   console.log(`Genre: ${metadata.genre || 'unknown'}`)
   console.log(`Duration: ${metadata.duration?.toFixed(1) || 'unknown'}s`)
+  console.log(`Chords: ${ugData ? `${ugData.chords.length} from Ultimate Guitar` : 'none'}`)
   console.log(`==============================\n`)
 
   return metadata
