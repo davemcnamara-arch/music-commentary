@@ -243,6 +243,9 @@ def analyze_youtube_audio(youtube_url: str, cookies: dict) -> dict:
             "--no-playlist",
             "--quiet",
             "--no-warnings",
+            # Anti-bot detection flags
+            "--extractor-args", "youtube:player_client=android",
+            "--user-agent", "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36",
             youtube_url
         ]
 
