@@ -32,6 +32,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_audio_analysis_cache_updated_at ON audio_analysis_cache;
+
 CREATE TRIGGER update_audio_analysis_cache_updated_at
   BEFORE UPDATE ON audio_analysis_cache
   FOR EACH ROW
