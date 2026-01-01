@@ -434,8 +434,18 @@ function formatTime(seconds: number): string {
 function detectGenre(title: string, channel: string): string {
   const text = `${title} ${channel}`.toLowerCase()
 
-  // Classical
-  if (text.match(/\b(symphony|concerto|sonata|quartet|bach|beethoven|mozart|chopin|brahms|tchaikovsky|classical)\b/i)) {
+  // CLASSICAL - must check first, most specific
+  const classicalTerms = [
+    'symphony', 'concerto', 'sonata', 'quartet', 'trio',
+    'bach', 'beethoven', 'mozart', 'chopin', 'brahms',
+    'tchaikovsky', 'debussy', 'schubert', 'haydn', 'handel',
+    'fur elise', 'für elise', 'moonlight', 'ode to joy',
+    'classical', 'baroque', 'romantic', 'impressionist',
+    'piano sonata', 'string quartet', 'waltz', 'nocturne',
+    'prelude', 'etude', 'variations', 'bagatelle'
+  ]
+
+  if (classicalTerms.some(term => text.includes(term))) {
     return 'classical'
   }
 
@@ -444,13 +454,13 @@ function detectGenre(title: string, channel: string): string {
     return 'jazz'
   }
 
-  // Rock (check before Beatles/beat issue)
-  if (text.match(/\b(beatles|rock|metal|punk|grunge|alternative|rolling stones|led zeppelin)\b/i)) {
-    return 'rock'
+  // Folk
+  if (text.match(/\b(folk|traditional|ballad|acoustic)\b|singer.songwriter/i)) {
+    return 'folk'
   }
 
   // Hip-hop (use word boundaries to avoid matching "beatles")
-  if (text.match(/\b(rap|hiphop|hip-hop|freestyle|trap|drill)\b|\bbeat\b(?!les)/i)) {
+  if (text.match(/\b(rap|hiphop|hip-hop|freestyle|trap|drill)\b|\bbeat\b(?!les)|\bmc\b|\bdj\b/i)) {
     return 'hiphop'
   }
 
@@ -459,9 +469,9 @@ function detectGenre(title: string, channel: string): string {
     return 'electronic'
   }
 
-  // Folk
-  if (text.match(/\b(folk|traditional|ballad|acoustic)\b|singer.songwriter/i)) {
-    return 'folk'
+  // Rock (check after other genres to avoid false positives)
+  if (text.match(/\b(beatles|rock|metal|punk|grunge|alternative|rolling stones|led zeppelin)\b/i)) {
+    return 'rock'
   }
 
   // Default to pop
@@ -557,21 +567,45 @@ function classifyPopSections(sections: any[], analysis: AudioAnalysis): Classifi
 
 function classifyClassicalSections(sections: any[], analysis: AudioAnalysis): ClassifiedSection[] {
   const totalDuration = analysis.duration
+  const numSections = sections.length
 
   return sections.map((section, i) => {
-    const position = section.start / totalDuration
     let name = ''
+    const sectionDuration = section.end - section.start
+    const position = section.start / totalDuration
 
-    if (i === 0 && section.end - section.start < 60) {
-      name = 'Introduction'
-    } else if (position < 0.35) {
-      name = 'Exposition'
-    } else if (position < 0.65) {
-      name = 'Development'
-    } else if (position < 0.90) {
-      name = 'Recapitulation'
-    } else {
-      name = 'Coda'
+    // For Für Elise-style pieces (Theme and Variations / Rondo form)
+    if (numSections <= 8) {
+      // Simple form: A-A-B-A-B-A or similar
+      if (i === 0) {
+        name = 'Theme A (Main Theme)'
+      } else if (i === numSections - 1) {
+        name = 'Coda'
+      } else if (i === 1 && sectionDuration < 30) {
+        name = 'Theme A (Repeat)'
+      } else {
+        // Alternate between themes
+        const isThemeA = i % 2 === 0
+        if (isThemeA) {
+          name = 'Theme A Returns'
+        } else {
+          name = position < 0.5 ? 'Theme B (Contrasting Section)' : 'Development/Variation'
+        }
+      }
+    }
+    // For Sonata Form (longer, more complex)
+    else if (numSections > 8) {
+      if (i === 0) {
+        name = 'Introduction'
+      } else if (position < 0.35) {
+        name = i === 1 ? 'Exposition (First Theme)' : 'Exposition (Second Theme)'
+      } else if (position < 0.65) {
+        name = 'Development'
+      } else if (position < 0.90) {
+        name = i < numSections * 0.8 ? 'Recapitulation (First Theme)' : 'Recapitulation (Second Theme)'
+      } else {
+        name = 'Coda'
+      }
     }
 
     return { ...section, classifiedName: name }
@@ -683,11 +717,30 @@ function summarizeChordProgressions(sections: ClassifiedSection[], chords: any[]
 function determineOverallForm(sections: ClassifiedSection[], genre: string): string {
   const names = sections.map(s => s.classifiedName)
 
-  if (names.some(n => n.includes('Exposition'))) return 'Sonata Form'
+  // Classical forms
+  if (genre === 'classical') {
+    if (names.some(n => n.includes('Exposition'))) return 'Sonata Form'
+    if (names.some(n => n.includes('Theme A')) && names.some(n => n.includes('Theme B'))) {
+      // Check if Theme A appears multiple times (Rondo form)
+      const themeACount = names.filter(n => n.includes('Theme A')).length
+      if (themeACount >= 3) return 'Rondo Form (A-B-A-C-A)'
+      return 'Binary or Ternary Form (A-B-A)'
+    }
+    if (names.some(n => n.includes('Variation'))) return 'Theme and Variations'
+    return 'Classical Form'
+  }
+
+  // Jazz forms
   if (names.some(n => n.includes('Head'))) return '32-bar AABA Form (Jazz Standard)'
+
+  // Pop/Rock forms
   if (names.filter(n => n.includes('Verse')).length > 0 &&
       names.filter(n => n.includes('Chorus')).length > 0) return 'Verse-Chorus Form'
+
+  // Electronic forms
   if (names.some(n => n.includes('Drop'))) return 'Build-Drop Form'
+
+  // Folk forms
   if (names.filter(n => n.includes('Verse')).length > 2) return 'Strophic Form'
 
   return 'Standard Song Form'
@@ -763,6 +816,20 @@ EXAMPLE STYLE: "The piccolo trumpet's baroque ornamentation and intervallic phra
 }
 
 function getExampleCommentary(level: string, genre: string): string {
+  if (genre === 'classical' && level === 'intermediate') {
+    return `EXAMPLE OF EXCELLENT CLASSICAL COMMENTARY (for your reference):
+
+[0:26] THEME A (REPEAT)
+
+NOTICING: Listen for how Beethoven ornaments the main theme on its return, adding delicate thirty-second note figures in the right hand while the left hand maintains the broken chord accompaniment pattern.
+
+SIGNIFICANCE: This ornamentation creates rhythmic momentum and demonstrates variation technique - restating the theme while adding melodic interest. The continuous sixteenth-note motion propels the music forward toward the contrasting B section.
+
+CONTEXT: Für Elise exemplifies the bagatelle form - a short character piece popular in the early Romantic period (c. 1810). Beethoven wrote this for Therese Malfatti, and the simple A-B-A-C-A structure makes it accessible to intermediate pianists while maintaining compositional sophistication.
+
+LISTEN TO THIS: Beethoven - Bagatelle Op. 119 No. 1 (similar miniature form), Schumann - Album for the Young Op. 68 (character pieces for piano), Mozart - Rondo in D Major K. 485 (rondo form with clear thematic returns).`
+  }
+
   if (genre === 'pop' && level === 'intermediate') {
     return `EXAMPLE OF EXCELLENT COMMENTARY (for your reference):
 
@@ -793,10 +860,10 @@ function buildStructureOverview(
     return `[${start}-${end}]  ${section.classifiedName}`
   }).join('\n')
 
-  // Only show chord progressions if they look reasonable
+  // Chord progressions - different labeling for classical vs pop
   let chordsSection = ''
-  if (chordProgressions && chordProgressions.length > 0) {
-    // Filter out nonsensical progressions
+  if (chordProgressions && chordProgressions.length > 0 && genre !== 'classical') {
+    // For pop/jazz/rock: show chord progressions
     const validProgressions = chordProgressions.filter(cp => {
       return cp.progression &&
              cp.progression !== 'N/A' &&
@@ -808,6 +875,18 @@ function buildStructureOverview(
       chordsSection = '\n\nCHORD PROGRESSIONS (Roman numeral analysis):\n' +
         validProgressions
           .filter(cp => !cp.section.toLowerCase().includes('introduction'))  // Skip intro
+          .map(cp => `${cp.section}: ${cp.progression}`)
+          .join('\n')
+    }
+  } else if (genre === 'classical' && chordProgressions && chordProgressions.length > 0) {
+    // For classical: show as "Harmonic Analysis" instead
+    const validProgressions = chordProgressions.filter(cp => {
+      return cp.progression && cp.progression !== 'N/A'
+    })
+
+    if (validProgressions.length > 0) {
+      chordsSection = '\n\nHARMONIC ANALYSIS (functional harmony):\n' +
+        validProgressions
           .map(cp => `${cp.section}: ${cp.progression}`)
           .join('\n')
     }
@@ -841,8 +920,11 @@ function buildStructureOverview(
     }
   }
 
+  // Form description - genre specific
+  const header = genre === 'classical' ? 'MOVEMENT STRUCTURE' : 'SONG STRUCTURE'
+
   return `════════════════════════════════════════════════════
-SONG STRUCTURE
+${header}
 ════════════════════════════════════════════════════
 
 ${sectionsList}${chordsSection}${webMetadataSection}
@@ -885,6 +967,42 @@ SONG: "${title}" by ${channel}
 GENRE: ${genre.toUpperCase()}
 
 ${structureOverview}
+
+${genre === 'classical' ? `
+CLASSICAL MUSIC CONTEXT:
+
+This is a classical piece. Your analysis should:
+1. Use classical terminology (Theme, Development, Variation, Coda, Exposition, Recapitulation)
+2. Reference appropriate historical period (Baroque, Classical, Romantic, Impressionist, etc.)
+3. Compare to other classical composers and works, not pop artists
+4. Discuss formal structure (Binary, Ternary, Rondo, Sonata, Theme and Variations, etc.)
+5. Analyze harmonic function in classical terms (tonic, dominant, subdominant, modulation, tonicization)
+6. Reference historical performance practice where relevant
+
+AVOID:
+- Pop music terminology (verse, chorus, bridge, hook)
+- Modern production terminology (mixing, compression, reverb effects)
+- Comparisons to pop/rock/modern artists
+- Modern genre labels (unless discussing influence)
+
+APPROPRIATE REFERENCES:
+- Other works by the same composer
+- Contemporary composers from the same period
+- Similar forms or techniques in the classical canon
+- Historical context about when/why it was composed
+- Performance practice considerations
+
+LISTEN TO THIS SECTION:
+For classical pieces, suggest 2-3 other CLASSICAL works with similar characteristics.
+Focus on same composer, same period, same form, or similar musical techniques.
+
+Examples:
+✅ "Beethoven - Moonlight Sonata (similar character piece), Chopin - Nocturne Op. 9 No. 2 (lyrical piano writing)"
+✅ "Bach - Prelude in C Major (arpeggiated patterns), Scarlatti - Sonata K. 380 (baroque keyboard style)"
+
+❌ "River Flows in You by Yiruma" (this is modern pop piano, not classical)
+❌ Comparing to any modern pop/rock artists
+` : ''}
 
 ${levelInstructions}
 
