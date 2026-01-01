@@ -249,6 +249,17 @@ serve(async (req) => {
         hasBridge: cachedWebData.has_bridge,
         hasIntro: cachedWebData.has_intro,
         instrumentalSections: cachedWebData.instrumental_sections,
+        ultimateGuitarTab: cachedWebData.ug_chords ? {
+          artist: cachedWebData.artist || '',
+          song: cachedWebData.title || '',
+          rating: cachedWebData.ug_rating || 0,
+          votes: cachedWebData.ug_votes || 0,
+          chords: cachedWebData.ug_chords || [],
+          sections: cachedWebData.ug_sections || [],
+          source: 'ultimate-guitar',
+          url: cachedWebData.ug_url || '',
+          license: cachedWebData.ug_license || ''
+        } : undefined,
         rawData: {
           musicbrainz: cachedWebData.raw_musicbrainz_data,
           theaudiodb: cachedWebData.raw_theaudiodb_data
@@ -283,6 +294,12 @@ serve(async (req) => {
               has_bridge: webMetadata.hasBridge,
               has_intro: webMetadata.hasIntro,
               instrumental_sections: webMetadata.instrumentalSections,
+              ug_chords: webMetadata.ultimateGuitarTab?.chords,
+              ug_sections: webMetadata.ultimateGuitarTab?.sections,
+              ug_rating: webMetadata.ultimateGuitarTab?.rating,
+              ug_votes: webMetadata.ultimateGuitarTab?.votes,
+              ug_url: webMetadata.ultimateGuitarTab?.url,
+              ug_license: webMetadata.ultimateGuitarTab?.license,
               raw_musicbrainz_data: webMetadata.rawData?.musicbrainz,
               raw_theaudiodb_data: webMetadata.rawData?.theaudiodb
             })
@@ -314,14 +331,26 @@ serve(async (req) => {
     const genre = detectGenreEnhanced(videoTitle, channelName, webMetadata)
     const classifiedSections = classifySections(audioAnalysis.sections, genre, audioAnalysis)
 
-    // 5. Use chord progressions from Modal (already analyzed by section)
+    // 6. Determine chord progressions (prioritize Ultimate Guitar > audio analysis)
     let chordProgressions: ChordProgression[] | null = null
-    if (audioAnalysis.chord_progressions && audioAnalysis.chord_progressions.length > 0) {
-      console.log('Using chord progressions from audio analysis...')
+    let chordSource = 'none'
+
+    if (webMetadata?.ultimateGuitarTab && webMetadata.ultimateGuitarTab.sections.length > 0) {
+      // Use Ultimate Guitar chord data (real chords!)
+      console.log('Using REAL chord progressions from Ultimate Guitar...')
+      chordProgressions = webMetadata.ultimateGuitarTab.sections.map(section => ({
+        section: section.name,
+        progression: section.chords.join(' - ')
+      }))
+      chordSource = 'ultimate-guitar'
+    } else if (audioAnalysis.chord_progressions && audioAnalysis.chord_progressions.length > 0) {
+      // Fall back to audio analysis (template-matched)
+      console.log('Using template-matched chord progressions from audio analysis...')
       chordProgressions = audioAnalysis.chord_progressions
+      chordSource = 'audio-analysis'
     }
 
-    // 6. Build enhanced prompt (with web metadata)
+    // 7. Build enhanced prompt (with web metadata and chord source)
     console.log('Building enhanced prompt...')
     const prompt = buildEnhancedPrompt(
       videoTitle,
@@ -331,7 +360,8 @@ serve(async (req) => {
       classifiedSections,
       audioAnalysis,
       chordProgressions,
-      webMetadata
+      webMetadata,
+      chordSource
     )
 
     // 7. Call OpenAI to generate commentary
@@ -852,7 +882,8 @@ function buildStructureOverview(
   analysis: AudioAnalysis,
   chordProgressions: ChordProgression[] | null,
   genre: string,
-  webMetadata: WebMusicMetadata | null
+  webMetadata: WebMusicMetadata | null,
+  chordSource: string
 ): string {
   const sectionsList = sections.map(section => {
     const start = formatTime(section.start)
@@ -868,11 +899,17 @@ function buildStructureOverview(
       return cp.progression &&
              cp.progression !== 'N/A' &&
              cp.progression.split(' - ').length >= 2 &&  // At least 2 chords
-             cp.progression.split(' - ').length <= 8     // Not more than 8
+             cp.progression.split(' - ').length <= 16    // Allow more chords for real data
     })
 
     if (validProgressions.length > 0) {
-      chordsSection = '\n\nCHORD PROGRESSIONS (Roman numeral analysis):\n' +
+      const chordSourceLabel = chordSource === 'ultimate-guitar'
+        ? '✓ VERIFIED from Ultimate Guitar tabs'
+        : chordSource === 'audio-analysis'
+        ? '⚠ DETECTED via audio analysis (template-matched)'
+        : 'Unknown source'
+
+      chordsSection = `\n\nCHORD PROGRESSIONS (${chordSourceLabel}):\n` +
         validProgressions
           .filter(cp => !cp.section.toLowerCase().includes('introduction'))  // Skip intro
           .map(cp => `${cp.section}: ${cp.progression}`)
@@ -947,10 +984,11 @@ function buildEnhancedPrompt(
   sections: ClassifiedSection[],
   analysis: AudioAnalysis,
   chordProgressions: ChordProgression[] | null,
-  webMetadata: WebMusicMetadata | null
+  webMetadata: WebMusicMetadata | null,
+  chordSource: string
 ): string {
   // Format structure overview
-  const structureOverview = buildStructureOverview(sections, analysis, chordProgressions, genre, webMetadata)
+  const structureOverview = buildStructureOverview(sections, analysis, chordProgressions, genre, webMetadata, chordSource)
 
   // Get level-specific instructions
   const levelInstructions = getLevelInstructions(level)
@@ -1026,10 +1064,27 @@ ${webMetadata.tempo ? `- The tempo is verified as ${webMetadata.tempo} BPM${Math
 ${webMetadata.genre ? `- Genre confirmed as ${webMetadata.genre}${webMetadata.genreTags && webMetadata.genreTags.length > 0 ? ` (also tagged: ${webMetadata.genreTags.join(', ')})` : ''}` : ''}
 ${webMetadata.mood ? `- Mood: ${webMetadata.mood}` : ''}
 ${webMetadata.style ? `- Musical style: ${webMetadata.style}` : ''}
+${webMetadata.ultimateGuitarTab ? `- REAL CHORD PROGRESSIONS from Ultimate Guitar (user-contributed tab with ${webMetadata.ultimateGuitarTab.votes} votes, ${webMetadata.ultimateGuitarTab.rating}/5 rating)` : ''}
 
 Use this verified information to enhance accuracy. When web metadata conflicts with audio analysis, trust the web metadata for well-known recordings (audio analysis can be affected by compression, tuning, or performance variations).
+
+${chordSource === 'ultimate-guitar' ? `
+CRITICAL - REAL CHORDS AVAILABLE:
+The chord progressions shown above are REAL CHORDS from Ultimate Guitar tabs, not template-matched estimates.
+- Use these exact chord names in your analysis (e.g., "Am7", "Gsus4", "C/E")
+- Reference specific chords when discussing harmony (e.g., "the Am7 creates a melancholy feel")
+- Explain why these specific chords work in context
+- These are accurate to the actual recording
+` : chordSource === 'audio-analysis' ? `
+NOTE - TEMPLATE-MATCHED CHORDS:
+The chord progressions shown are template-matched estimates from audio analysis.
+- These may not reflect extended chords, inversions, or complex harmony
+- Use them as rough guides, but don't over-specify chord details
+- Focus on general harmonic function (tonic, subdominant, dominant)
+` : ''}
 ` : `
 NOTE: No verified web metadata available for this recording. Audio analysis results may be less accurate for obscure or live recordings.
+${chordSource === 'audio-analysis' ? `The chord progressions are template-matched estimates and may not be fully accurate.` : ''}
 `}
 
 YOUR TASK:
